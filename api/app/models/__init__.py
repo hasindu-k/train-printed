@@ -1,0 +1,64 @@
+import uuid
+from datetime import datetime
+from sqlalchemy import Column, String, Integer, DateTime, Boolean, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+from app.database import Base
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    email = Column(String(255), unique=True, nullable=False)
+    role = Column(String(50), nullable=False)  # admin, reviewer, annotator
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    line_images = relationship("LineImage", back_populates="reviewer")
+
+
+class Document(Base):
+    __tablename__ = "documents"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    original_filename = Column(String(255), nullable=False)
+    stored_path = Column(String(255), nullable=False)
+    status = Column(String(50), nullable=False)  # uploaded, processing, processed, failed
+    total_pages = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    pages = relationship("Page", back_populates="document", cascade="all, delete-orphan")
+
+
+class Page(Base):
+    __tablename__ = "pages"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id"), nullable=False)
+    page_number = Column(Integer, nullable=False)
+    tif_path = Column(String(255), nullable=False)
+    status = Column(String(50), nullable=False)  # pending, processed, failed
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    document = relationship("Document", back_populates="pages")
+    line_images = relationship("LineImage", back_populates="page", cascade="all, delete-orphan")
+
+
+class LineImage(Base):
+    __tablename__ = "line_images"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    page_id = Column(UUID(as_uuid=True), ForeignKey("pages.id"), nullable=False)
+    image_path = Column(String(255), nullable=False)
+    auto_text = Column(String, nullable=True)
+    corrected_text = Column(String, nullable=True)
+    verified = Column(Boolean, nullable=False, default=False)
+    reviewer_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    page = relationship("Page", back_populates="line_images")
+    reviewer = relationship("User", back_populates="line_images")
