@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from uuid import UUID
+from datetime import datetime
 from app.database import get_db
 from app.models import Page, Document
 from app.schemas import PageCreate, PageResponse, PageUpdate
@@ -51,6 +52,7 @@ def update_page(page_id: UUID, page_data: PageUpdate, db: Session = Depends(get_
     if page_data.status is not None:
         page.status = page_data.status
     
+    page.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(page)
     return page

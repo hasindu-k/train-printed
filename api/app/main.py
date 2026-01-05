@@ -1,14 +1,16 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import os
 from app.database import Base, engine
-from app.routes import users, documents, pages, line_images
+from app.routes import auth, users, documents, pages, line_images
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="Document OCR API",
-    description="API for document processing and OCR",
+    title="Document OCR & Tesseract Training API",
+    description="API for document processing, OCR, and Tesseract training dataset management",
     version="1.0.0"
 )
 
@@ -21,7 +23,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount static file directories
+os.makedirs("uploads", exist_ok=True)
+os.makedirs("pages", exist_ok=True)
+os.makedirs("lines", exist_ok=True)
+
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+app.mount("/pages", StaticFiles(directory="pages"), name="pages")
+app.mount("/lines", StaticFiles(directory="lines"), name="lines")
+
 # Include routes
+app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(documents.router)
 app.include_router(pages.router)
@@ -31,11 +43,12 @@ app.include_router(line_images.router)
 @app.get("/", tags=["root"])
 def read_root():
     return {
-        "message": "Document OCR API",
+        "message": "Document OCR & Tesseract Training API",
         "version": "1.0.0",
         "docs": "/docs",
         "openapi": "/openapi.json"
     }
+
 
 
 @app.get("/health", tags=["health"])

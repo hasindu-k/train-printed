@@ -12,8 +12,11 @@ class User(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False)
     email = Column(String(255), unique=True, nullable=False)
+    hashed_password = Column(String(255), nullable=False)  # Hashed password with bcrypt
     role = Column(String(50), nullable=False)  # admin, reviewer, annotator
+    is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     line_images = relationship("LineImage", back_populates="reviewer")
 
@@ -24,6 +27,7 @@ class Document(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     original_filename = Column(String(255), nullable=False)
     stored_path = Column(String(255), nullable=False)
+    pages_folder = Column(String(255), nullable=True)  # pages/<doc_name>/
     status = Column(String(50), nullable=False)  # uploaded, processing, processed, failed
     total_pages = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
@@ -53,6 +57,7 @@ class LineImage(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     page_id = Column(UUID(as_uuid=True), ForeignKey("pages.id"), nullable=False)
     image_path = Column(String(255), nullable=False)
+    gt_text_path = Column(String(255), nullable=True)  # path to .gt.txt file
     auto_text = Column(String, nullable=True)
     corrected_text = Column(String, nullable=True)
     verified = Column(Boolean, nullable=False, default=False)

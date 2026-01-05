@@ -7,7 +7,8 @@ from uuid import UUID
 class UserCreate(BaseModel):
     name: str
     email: EmailStr
-    role: str  # admin, reviewer, annotator
+    password: str
+    role: str = "annotator"  # admin, reviewer, annotator (default: annotator)
 
 
 class UserResponse(BaseModel):
@@ -15,10 +16,19 @@ class UserResponse(BaseModel):
     name: str
     email: str
     role: str
+    is_active: bool
     created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
 
 
 class DocumentCreate(BaseModel):
