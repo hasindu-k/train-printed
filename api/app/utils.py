@@ -177,6 +177,32 @@ def cleanup_folder(folder_path: str) -> None:
     if os.path.exists(folder_path):
         shutil.rmtree(folder_path)
 
+
+def extract_text_from_image(image_path: str, lang: str = "eng") -> str:
+    """Extract text from image using Tesseract OCR.
+    
+    Args:
+        image_path: Path to the image file
+        lang: Language for OCR (default: eng, use sin for Sinhala)
+        
+    Returns:
+        Extracted text from the image
+    """
+    try:
+        import pytesseract
+        from PIL import Image
+        
+        if not os.path.exists(image_path):
+            raise FileNotFoundError(f"Image not found: {image_path}")
+        
+        img = Image.open(image_path)
+        text = pytesseract.image_to_string(img, lang=lang)
+        return text.strip()
+    except ImportError:
+        raise ImportError("pytesseract is not installed. Run: pip install pytesseract")
+    except Exception as e:
+        raise Exception(f"Error extracting text from image: {str(e)}")
+
 def get_no_of_pages_in_pdf(pdf_path: str) -> int:
     """
     Get the number of pages in a PDF file.

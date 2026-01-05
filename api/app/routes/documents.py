@@ -17,6 +17,7 @@ from app.utils import (
     update_gt_text_file,
     read_gt_text_file,
     export_dataset,
+    extract_text_from_image,
 )
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -450,6 +451,79 @@ def extract_lines_from_document_endpoint(
             detail=f"Error extracting lines: {str(e)}"
         )
 
+# ============ OCR TEXT EXTRACTION ============
+
+@router.post("/{document_id}/extract-text")
+def extract_text_from_document_lines(
+    document_id: UUID,
+    lang: str = "sin",
+    db: Session = Depends(get_db)
+):
+    """
+    📌 Extract Text from Line Images using Tesseract OCR
+    Processes all line images for a document and saves to auto_text column
+    
+    Args:
+        document_id: Document UUID
+        lang: Tesseract language (eng, sin, etc.)
+    """
+    import time
+    start_time = time.perf_counter()
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+    
+    try:
+        # Get all pages for this document
+        pages = db.query(Page).filter(Page.document_id == document_id).all()
+        
+        total_processed = 0
+        total_failed = 0
+        
+        for page in pages:
+            # Get all line images for this page
+            line_images = db.query(LineImage).filter(LineImage.page_id == page.id).all()
+            
+            for line_image in line_images:
+                if not line_image.image_path or not os.path.exists(line_image.image_path):
+                    total_failed += 1
+                    continue
+                
+                try:
+                    # Extract text using Tesseract
+                    extracted_text = extract_text_from_image(line_image.image_path, lang="sin")
+                    
+                    # Update auto_text in database
+                    line_image.auto_text = extracted_text
+                    line_image.updated_at = datetime.utcnow()
+                    print(f"Extracted text count yet {total_processed + 1}")
+                    total_processed += 1
+                    
+                except Exception as e:
+                    print(f"Failed to extract text from {line_image.image_path}: {str(e)}")
+                    total_failed += 1
+        
+        db.commit()
+        elapsed = time.perf_counter() - start_time   # ⏱️ Stop timer
+        
+        return {
+            "status": "success",
+            "document_id": str(document_id),
+            "total_processed": total_processed,
+            "total_failed": total_failed,
+            "language": lang,
+            "processing_time_seconds": round(elapsed, 2)
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error extracting text: {str(e)}"
+        )
+
+
 # ============ CREATE GROUND TRUTH TEXT FILES ============
 
 @router.post("/{document_id}/pages/{page_id}/create-gt-files")
@@ -545,6 +619,7 @@ def create_gt_files_for_document(
 @router.get("/{document_id}/lines")
 def fetch_lines_for_labeling(
     document_id: UUID,
+    request: Request,
     verified: bool = None,
     page_num: int = None,
     assigned_to: UUID = None,
@@ -583,11 +658,15 @@ def fetch_lines_for_labeling(
         query = query.filter(LineImage.reviewer_id == assigned_to)
     
     lines = query.all()
+    
+    # Construct base URL
+    base_url = str(request.base_url).rstrip('/')
+    
     return [
         {
             "id": str(line.id),
             "page_id": str(line.page_id),
-            "image_path": line.png_path,
+            "image_path": f"{base_url}/{line.png_path.replace(os.sep, '/')}" if line.png_path else None,
             "auto_text": line.auto_text,
             "corrected_text": line.corrected_text,
             "verified": line.verified,

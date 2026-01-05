@@ -10,9 +10,9 @@ from app.database import get_db
 from app.models import LineImage, Page, User
 from app.schemas import LineImageCreate, LineImageResponse, LineImageUpdate
 from app.security import get_current_user, get_current_reviewer
-from app.utils import update_gt_text_file, read_gt_text_file
+from app.utils import update_gt_text_file, read_gt_text_file, extract_text_from_image
 
-router = APIRouter(prefix="/lines", tags=["lines"])
+router = APIRouter(prefix="/api/lines", tags=["lines"])
 
 
 class LineImageCorrection(BaseModel):
@@ -251,3 +251,61 @@ def get_page_lines(page_id: UUID, db: Session = Depends(get_db)):
         }
         for line in lines
     ]
+
+
+# ============ TEXT EXTRACTION ============
+
+@router.post("/{line_image_id}/extract-text")
+def extract_text(
+    line_image_id: UUID,
+    lang: str = "sin",
+    db: Session = Depends(get_db)
+):
+    """
+    Extract text from a single line image using Tesseract OCR.
+    Processes the line image and saves to auto_text column.
+    
+    Args:
+        line_image_id: LineImage UUID
+        lang: Tesseract language (eng, sin, etc.)
+    """
+    import time
+    start_time = time.perf_counter()
+    
+    line_image = db.query(LineImage).filter(LineImage.id == line_image_id).first()
+    if not line_image:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Line image not found"
+        )
+    
+    if not line_image.image_path or not os.path.exists(line_image.image_path):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Image file not found"
+        )
+    
+    try:
+        # Extract text using Tesseract
+        extracted_text = extract_text_from_image(line_image.image_path, lang=lang)
+        
+        # Update auto_text in database
+        line_image.auto_text = extracted_text
+        line_image.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(line_image)
+        
+        elapsed = time.perf_counter() - start_time
+        
+        return {
+            "status": "success",
+            "line_image_id": str(line_image_id),
+            "extracted_text": extracted_text,
+            "language": lang,
+            "processing_time_seconds": round(elapsed, 2)
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error extracting text: {str(e)}"
+        )

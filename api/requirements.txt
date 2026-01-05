@@ -16,3 +16,5 @@ python-jose==3.3.0
 cryptography==41.0.7
 bcrypt==3.2.2
 PyPDF2==3.0.1
+pytesseract==0.3.10
+alembic==1.13.1
