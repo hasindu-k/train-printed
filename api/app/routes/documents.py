@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
+from sqlalchemy import func, case
 from uuid import UUID
 import os
 import shutil
@@ -62,6 +63,10 @@ async def upload_document(
         
         # Extract document name from filename
         doc_name = sanitize_filename(file.filename)
+
+        # if pdf get number of pages
+        from app.utils import get_no_of_pages_in_pdf
+        num_pages = get_no_of_pages_in_pdf(file_path)
         
         # Create document record
         db_document = Document(
@@ -69,7 +74,7 @@ async def upload_document(
             stored_path=file_path,
             pages_folder=f"{PAGES_DIR}/{doc_name}",
             status="uploaded",
-            total_pages=0
+            total_pages=num_pages if num_pages is not None else 0
         )
         db.add(db_document)
         db.commit()
@@ -85,8 +90,48 @@ async def upload_document(
 
 @router.get("/", response_model=list[DocumentResponse])
 def list_documents(db: Session = Depends(get_db)):
-    """List all documents."""
-    return db.query(Document).all()
+    """List all documents with line extraction/verification counts."""
+    documents = db.query(Document).all()
+    if not documents:
+        return []
+
+    doc_ids = [doc.id for doc in documents]
+    counts = (
+        db.query(
+            Page.document_id.label("doc_id"),
+            func.count(LineImage.id).label("lines_extracted"),
+            func.coalesce(
+                func.sum(case((LineImage.verified == True, 1), else_=0)), 0
+            ).label("lines_verified"),
+        )
+        .join(LineImage, LineImage.page_id == Page.id)
+        .filter(Page.document_id.in_(doc_ids))
+        .group_by(Page.document_id)
+        .all()
+    )
+
+    counts_map = {
+        row.doc_id: {
+            "lines_extracted": row.lines_extracted,
+            "lines_verified": row.lines_verified,
+        }
+        for row in counts
+    }
+
+    return [
+        DocumentResponse(
+            id=doc.id,
+            original_filename=doc.original_filename,
+            stored_path=doc.stored_path,
+            status=doc.status,
+            total_pages=doc.total_pages,
+            lines_extracted=counts_map.get(doc.id, {}).get("lines_extracted", 0),
+            lines_verified=counts_map.get(doc.id, {}).get("lines_verified", 0),
+            created_at=doc.created_at,
+            updated_at=doc.updated_at,
+        )
+        for doc in documents
+    ]
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
@@ -98,7 +143,30 @@ def get_document(document_id: UUID, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found"
         )
-    return document
+
+    counts = (
+        db.query(
+            func.count(LineImage.id).label("lines_extracted"),
+            func.coalesce(
+                func.sum(case((LineImage.verified == True, 1), else_=0)), 0
+            ).label("lines_verified"),
+        )
+        .join(Page, Page.id == LineImage.page_id)
+        .filter(Page.document_id == document_id)
+        .first()
+    )
+
+    return DocumentResponse(
+        id=document.id,
+        original_filename=document.original_filename,
+        stored_path=document.stored_path,
+        status=document.status,
+        total_pages=document.total_pages,
+        lines_extracted=counts.lines_extracted if counts else 0,
+        lines_verified=counts.lines_verified if counts else 0,
+        created_at=document.created_at,
+        updated_at=document.updated_at,
+    )
 
 
 @router.put("/{document_id}", response_model=DocumentResponse)
@@ -161,6 +229,12 @@ def convert_pdf_to_pages(document_id: UUID, db: Session = Depends(get_db)):
     ensure_dirs()
     
     document = db.query(Document).filter(Document.id == document_id).first()
+
+    # check if already processed
+    if document and document.status == "processed":
+        print("Document already processed, skipping conversion.")
+        return document
+    
     if not document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

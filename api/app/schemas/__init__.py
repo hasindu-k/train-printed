@@ -47,6 +47,8 @@ class DocumentResponse(BaseModel):
     stored_path: str
     status: str
     total_pages: int
+    lines_extracted: int = 0
+    lines_verified: int = 0
     created_at: datetime
     updated_at: datetime
 

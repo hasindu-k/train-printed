@@ -171,3 +171,27 @@ def cleanup_folder(folder_path: str) -> None:
     """Remove a folder and all its contents."""
     if os.path.exists(folder_path):
         shutil.rmtree(folder_path)
+
+def get_no_of_pages_in_pdf(pdf_path: str) -> int:
+    """
+    Get the number of pages in a PDF file.
+
+    Args:
+        pdf_path: Path to the PDF file
+
+    Returns:
+        Number of pages in the PDF
+    """
+    try:
+        from PyPDF2 import PdfReader
+    except ImportError:
+        raise ImportError("PyPDF2 is not installed. Run: pip install PyPDF2")
+
+    try:
+        with open(pdf_path, "rb") as f:
+            reader = PdfReader(f)
+            return len(reader.pages)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"File not found: {pdf_path}")
+    except Exception as e:
+        raise RuntimeError(f"Failed to read PDF: {e}")
