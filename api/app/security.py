@@ -8,7 +8,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User
+from app.models import User, BlacklistedToken
 import os
 
 # Configuration
@@ -55,13 +55,41 @@ def create_refresh_token(data: dict) -> str:
     return encoded_jwt
 
 
-def verify_token(token: str) -> dict:
+def verify_token(token: str, db: Session = None) -> dict:
     """Verify and decode a JWT token."""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        
+        # Check if token is blacklisted
+        if db:
+            is_blacklisted = db.query(BlacklistedToken).filter(
+                BlacklistedToken.token == token
+            ).first()
+            if is_blacklisted:
+                return None
+        
         return payload
     except JWTError:
         return None
+
+
+def blacklist_token(token: str, user_id: str, expires_at: datetime, db: Session) -> None:
+    """Add a token to the blacklist."""
+    blacklisted = BlacklistedToken(
+        token=token,
+        user_id=user_id,
+        expires_at=expires_at
+    )
+    db.add(blacklisted)
+    db.commit()
+
+
+def cleanup_expired_tokens(db: Session) -> None:
+    """Remove expired tokens from blacklist."""
+    db.query(BlacklistedToken).filter(
+        BlacklistedToken.expires_at < datetime.utcnow()
+    ).delete()
+    db.commit()
 
 
 async def get_current_user(
@@ -71,7 +99,7 @@ async def get_current_user(
     """Dependency to get the current authenticated user."""
     token = credentials.credentials
     
-    payload = verify_token(token)
+    payload = verify_token(token, db)
     if payload is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

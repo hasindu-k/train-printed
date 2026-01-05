@@ -13,6 +13,7 @@ from app.security import (
     create_refresh_token,
     verify_token,
     get_current_user,
+    cleanup_expired_tokens,
 )
 from pydantic import BaseModel
 
@@ -93,7 +94,11 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
     Login with email and password.
     
     Returns access token, refresh token, and user information.
+    Cleans up expired tokens from blacklist on each login.
     """
+    # Clean up expired tokens from blacklist
+    cleanup_expired_tokens(db)
+    
     # Find user by email
     user = db.query(User).filter(User.email == request.email).first()
     
@@ -128,7 +133,7 @@ def refresh_access_token(request: RefreshTokenRequest, db: Session = Depends(get
     
     Returns new access token, refresh token, and user information.
     """
-    payload = verify_token(request.refresh_token)
+    payload = verify_token(request.refresh_token, db)
     
     if payload is None:
         raise HTTPException(
@@ -175,11 +180,26 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
 
 
 @router.post("/logout")
-async def logout(current_user: User = Depends(get_current_user)):
+async def logout(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
-    Logout endpoint (client should discard tokens).
+    Logout endpoint - blacklists the current access token.
     
-    Note: JWTs are stateless, so server-side logout requires maintaining a token blacklist.
-    For now, this is a placeholder that validates the token is valid.
+    Adds the current token to blacklist so it cannot be used again.
+    Client should also discard both access and refresh tokens.
     """
-    return {"message": "Logged out successfully. Please discard your tokens."}
+    from app.security import blacklist_token, verify_token
+    from datetime import datetime
+    
+    token = credentials.credentials
+    
+    # Decode token to get expiration
+    payload = verify_token(token, db)
+    if payload:
+        expires_at = datetime.fromtimestamp(payload.get("exp"))
+        blacklist_token(token, str(current_user.id), expires_at, db)
+    
+    return {"message": "Logged out successfully. Token has been invalidated."}

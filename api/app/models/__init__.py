@@ -67,3 +67,13 @@ class LineImage(Base):
 
     page = relationship("Page", back_populates="line_images")
     reviewer = relationship("User", back_populates="line_images")
+
+
+class BlacklistedToken(Base):
+    __tablename__ = "blacklisted_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    token = Column(String, nullable=False, unique=True, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    blacklisted_at = Column(DateTime, nullable=False, default=datetime.utcnow)

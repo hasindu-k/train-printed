@@ -6,11 +6,81 @@ from app.models import User
 from app.schemas import UserCreate, UserResponse, UserUpdate
 from app.security import (
     hash_password,
+    verify_password,
     get_current_user,
     get_current_admin,
 )
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+def register_user(
+    user: UserCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Register a new user account (Public endpoint).
+    
+    Creates a new user with 'user' role by default.
+    """
+    existing_user = db.query(User).filter(User.email == user.email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    db_user = User(
+        name=user.name,
+        email=user.email,
+        hashed_password=hash_password(user.password),
+        role="user",  # Default role for self-registration
+        is_active=True
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+
+@router.get("/me", response_model=UserResponse)
+def get_current_user_profile(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get current authenticated user's profile.
+    """
+    return current_user
+
+
+@router.post("/change-password", status_code=status.HTTP_200_OK)
+def change_password(
+    old_password: str,
+    new_password: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Change the current user's password.
+    """
+    user = db.query(User).filter(User.id == current_user.id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    if not verify_password(old_password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect password"
+        )
+    
+    user.hashed_password = hash_password(new_password)
+    db.commit()
+    
+    return {"message": "Password changed successfully"}
 
 
 @router.post("/admin/create", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
