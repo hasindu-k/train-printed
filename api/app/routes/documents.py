@@ -362,6 +362,9 @@ def extract_lines_from_page_endpoint(
         page.status = "processed"
         page.updated_at = datetime.utcnow()
         db.commit()
+
+        document.status = "extracted"
+        db.commit()
         
         return {
             "status": "success",
@@ -376,6 +379,72 @@ def extract_lines_from_page_endpoint(
             detail=f"Error extracting lines: {str(e)}"
         )
 
+@router.post("/{document_id}/extract-lines")
+def extract_lines_from_document_endpoint(
+    document_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    📌 4️⃣ Extract Line Images for Document (bulk)
+    Extracts lines from all pages in a document and creates DB records
+    """
+    ensure_dirs()
+    
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+    
+    try:
+        # Get all pages for this document
+        pages = db.query(Page).filter(Page.document_id == document_id).all()
+        
+        total_lines_extracted = 0
+        for page in pages:
+            if not os.path.exists(page.tif_path):
+                continue  # skip missing files
+            
+            # Extract lines
+            doc_name = sanitize_filename(document.original_filename)
+            page_name = f"page_{page.page_number:04d}"
+            output_folder = os.path.join(LINES_DIR, doc_name, page_name)
+            
+            num_lines = extract_lines_from_page(page.tif_path, output_folder)
+            total_lines_extracted += num_lines
+            
+            # Create DB records for line images
+            for i in range(1, num_lines + 1):
+                line_path = os.path.join(output_folder, f"line_{i:04d}.tif")
+                gt_text_path = os.path.join(output_folder, f"line_{i:04d}.gt.txt")
+                
+                db_line = LineImage(
+                    page_id=page.id,
+                    image_path=line_path,
+                    gt_text_path=gt_text_path,
+                    verified=False
+                )
+                db.add(db_line)
+            
+            page.status = "processed"
+            page.updated_at = datetime.utcnow()
+            db.commit()
+
+        # document status update
+        document.status = "extracted"
+        db.commit()
+        
+        return {
+            "status": "success",
+            "document_id": str(document_id),
+            "total_lines_extracted": total_lines_extracted
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error extracting lines: {str(e)}"
+        )
 
 # ============ CREATE GROUND TRUTH TEXT FILES ============
 

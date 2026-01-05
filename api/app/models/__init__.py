@@ -28,7 +28,7 @@ class Document(Base):
     original_filename = Column(String(255), nullable=False)
     stored_path = Column(String(255), nullable=False)
     pages_folder = Column(String(255), nullable=True)  # pages/<doc_name>/
-    status = Column(String(50), nullable=False)  # uploaded, processing, processed, failed
+    status = Column(String(50), nullable=False)  # uploaded, processing, processed, extracted, failed
     total_pages = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
