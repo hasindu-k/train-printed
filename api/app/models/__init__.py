@@ -56,7 +56,8 @@ class LineImage(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     page_id = Column(UUID(as_uuid=True), ForeignKey("pages.id"), nullable=False)
-    image_path = Column(String(255), nullable=False)
+    image_path = Column(String(255), nullable=False)  # path to .tif file
+    png_path = Column(String(255), nullable=True)  # path to .png file for browser viewing
     gt_text_path = Column(String(255), nullable=True)  # path to .gt.txt file
     auto_text = Column(String, nullable=True)
     corrected_text = Column(String, nullable=True)

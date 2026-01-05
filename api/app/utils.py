@@ -78,8 +78,13 @@ def extract_lines_from_page(img_path: str, output_folder: str) -> int:
                 continue
             
             line_img = img[y:y+h, x:x+w]
+            # Save as TIF for Tesseract training
             Image.fromarray(line_img).save(
                 f"{output_folder}/line_{line_count+1:04d}.tif"
+            )
+            # Save as PNG for browser viewing
+            Image.fromarray(line_img).save(
+                f"{output_folder}/line_{line_count+1:04d}.png"
             )
             line_count += 1
         

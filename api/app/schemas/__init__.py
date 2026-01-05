@@ -93,6 +93,7 @@ class LineImageResponse(BaseModel):
     id: UUID
     page_id: UUID
     image_path: str
+    png_path: Optional[str] = None
     auto_text: Optional[str]
     corrected_text: Optional[str]
     verified: bool

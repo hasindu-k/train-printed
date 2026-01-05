@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case
 from uuid import UUID
@@ -349,11 +349,13 @@ def extract_lines_from_page_endpoint(
         # Create DB records for line images
         for i in range(1, num_lines + 1):
             line_path = os.path.join(output_folder, f"line_{i:04d}.tif")
+            png_path = os.path.join(output_folder, f"line_{i:04d}.png")
             gt_text_path = os.path.join(output_folder, f"line_{i:04d}.gt.txt")
             
             db_line = LineImage(
                 page_id=page_id,
                 image_path=line_path,
+                png_path=png_path,
                 gt_text_path=gt_text_path,
                 verified=False
             )
@@ -417,11 +419,13 @@ def extract_lines_from_document_endpoint(
             # Create DB records for line images
             for i in range(1, num_lines + 1):
                 line_path = os.path.join(output_folder, f"line_{i:04d}.tif")
+                png_path = os.path.join(output_folder, f"line_{i:04d}.png")
                 gt_text_path = os.path.join(output_folder, f"line_{i:04d}.gt.txt")
                 
                 db_line = LineImage(
                     page_id=page.id,
                     image_path=line_path,
+                    png_path=png_path,
                     gt_text_path=gt_text_path,
                     verified=False
                 )
@@ -583,7 +587,7 @@ def fetch_lines_for_labeling(
         {
             "id": str(line.id),
             "page_id": str(line.page_id),
-            "image_path": line.image_path,
+            "image_path": line.png_path,
             "auto_text": line.auto_text,
             "corrected_text": line.corrected_text,
             "verified": line.verified,
