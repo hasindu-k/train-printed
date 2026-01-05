@@ -160,9 +160,9 @@ def save_corrected_text(
 @router.put("/{line_image_id}/verify")
 def verify_line(
     line_image_id: UUID,
-    verification: LineImageVerification = None,
     current_user: User = Depends(get_current_reviewer),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    verification: LineImageVerification = LineImageVerification()
 ):
     """
     📌 9️⃣ Verify Line
@@ -177,7 +177,7 @@ def verify_line(
     
     line_image.verified = True
     # Set reviewer to current user if not specified
-    line_image.reviewer_id = verification.reviewer_id if (verification and verification.reviewer_id) else current_user.id
+    line_image.reviewer_id = verification.reviewer_id if verification.reviewer_id else current_user.id
     
     line_image.updated_at = datetime.utcnow()
     db.commit()
