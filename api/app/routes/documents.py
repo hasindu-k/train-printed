@@ -91,7 +91,7 @@ async def upload_document(
 @router.get("/", response_model=list[DocumentResponse])
 def list_documents(db: Session = Depends(get_db)):
     """List all documents with line extraction/verification counts."""
-    documents = db.query(Document).all()
+    documents = db.query(Document).order_by(Document.created_at.desc()).all()
     if not documents:
         return []
 
