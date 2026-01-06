@@ -90,7 +90,7 @@ async def upload_document(
 
 
 @router.get("/", response_model=list[DocumentResponse])
-def list_documents(db: Session = Depends(get_db)):
+def list_documents(request: Request, db: Session = Depends(get_db)):
     """List all documents with line extraction/verification counts."""
     documents = db.query(Document).order_by(Document.created_at.desc()).all()
     if not documents:
@@ -119,11 +119,14 @@ def list_documents(db: Session = Depends(get_db)):
         for row in counts
     }
 
+    # Construct base URL
+    base_url = str(request.base_url).rstrip('/')
+
     return [
         DocumentResponse(
             id=doc.id,
             original_filename=doc.original_filename,
-            stored_path=doc.stored_path,
+            stored_path=f"{base_url}/{doc.stored_path.replace(os.sep, '/')}",
             status=doc.status,
             total_pages=doc.total_pages,
             lines_extracted=counts_map.get(doc.id, {}).get("lines_extracted", 0),
@@ -136,7 +139,7 @@ def list_documents(db: Session = Depends(get_db)):
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
-def get_document(document_id: UUID, db: Session = Depends(get_db)):
+def get_document(document_id: UUID, request: Request, db: Session = Depends(get_db)):
     """Get a specific document."""
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
@@ -157,10 +160,13 @@ def get_document(document_id: UUID, db: Session = Depends(get_db)):
         .first()
     )
 
+    # Construct base URL
+    base_url = str(request.base_url).rstrip('/')
+
     return DocumentResponse(
         id=document.id,
         original_filename=document.original_filename,
-        stored_path=document.stored_path,
+        stored_path=f"{base_url}/{document.stored_path.replace(os.sep, '/')}",
         status=document.status,
         total_pages=document.total_pages,
         lines_extracted=counts.lines_extracted if counts else 0,
