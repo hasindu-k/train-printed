@@ -21,6 +21,7 @@ class LineImageCorrection(BaseModel):
 
 class LineImageVerification(BaseModel):
     reviewer_id: UUID = None
+    corrected_text: str = None
 
 
 # ============ BASIC CRUD ============
@@ -167,6 +168,7 @@ def verify_line(
     """
     📌 9️⃣ Verify Line
     Mark a line as verified (Reviewer or Admin only)
+    Optionally update corrected text and GT.txt file
     """
     line_image = db.query(LineImage).filter(LineImage.id == line_image_id).first()
     if not line_image:
@@ -175,19 +177,34 @@ def verify_line(
             detail="Line image not found"
         )
     
-    line_image.verified = True
-    # Set reviewer to current user if not specified
-    line_image.reviewer_id = verification.reviewer_id if verification.reviewer_id else current_user.id
-    
-    line_image.updated_at = datetime.utcnow()
-    db.commit()
-    db.refresh(line_image)
-    
-    return {
-        "status": "success",
-        "line_id": str(line_image_id),
-        "verified": True
-    }
+
+    try:
+        # Update corrected text if provided
+        if verification.corrected_text is not None:
+            line_image.corrected_text = verification.corrected_text
+            
+            # Update .gt.txt file on disk
+            if line_image.gt_text_path:
+                update_gt_text_file(line_image.gt_text_path, verification.corrected_text)
+        
+        line_image.verified = True
+        # Set reviewer to current user if not specified
+        line_image.reviewer_id = verification.reviewer_id if verification.reviewer_id else current_user.id
+        
+        line_image.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(line_image)
+        
+        return {
+            "status": "success",
+            "line_id": str(line_image_id),
+            "verified": True
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error verifying line: {str(e)}"
+        )
 
 
 @router.put("/{line_image_id}/unverify")
