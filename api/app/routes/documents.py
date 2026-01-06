@@ -138,6 +138,131 @@ def list_documents(request: Request, db: Session = Depends(get_db)):
     ]
 
 
+# ============ FINALIZED DATASETS ============
+
+@router.get("/finalized-datasets")
+def list_finalized_datasets(request: Request, db: Session = Depends(get_db)):
+    """
+    📌 List All Finalized Datasets
+    Get all created finalized datasets with metadata
+    
+    Returns:
+        List of datasets with:
+        - id: document_id
+        - name: document name
+        - documents: number of source documents (always 1 per dataset)
+        - totalLines: total verified lines
+        - verifiedLines: total verified lines (same as totalLines)
+        - createdAt: creation date
+        - size: folder size in MB
+        - downloadUrl: URL to download zip
+    """
+    finalized_dir = os.path.join(BASE_UPLOAD_DIR, "finalized")
+    
+    if not os.path.exists(finalized_dir):
+        return []
+    
+    datasets = []
+    
+    # Iterate through finalized folders
+    for folder_name in os.listdir(finalized_dir):
+        folder_path = os.path.join(finalized_dir, folder_name)
+        
+        if not os.path.isdir(folder_path):
+            continue
+        
+        # Find the corresponding document by name
+        document = db.query(Document).filter(
+            Document.original_filename.like(f"%{folder_name}%")
+        ).first()
+        
+        if not document:
+            # Try to match by sanitized filename
+            all_docs = db.query(Document).all()
+            for doc in all_docs:
+                if sanitize_filename(doc.original_filename) == folder_name:
+                    document = doc
+                    break
+        
+        # Count files in the folder
+        tif_files = [f for f in os.listdir(folder_path) if f.endswith('.tif')]
+        total_lines = len(tif_files)
+        
+        # Calculate folder size
+        total_size = 0
+        for dirpath, dirnames, filenames in os.walk(folder_path):
+            for filename in filenames:
+                file_path = os.path.join(dirpath, filename)
+                total_size += os.path.getsize(file_path)
+        
+        size_mb = total_size / (1024 * 1024)  # Convert to MB
+        
+        # Get creation time
+        created_at = datetime.fromtimestamp(os.path.getctime(folder_path))
+        
+        # Construct base URL
+        base_url = str(request.base_url).rstrip('/')
+        
+        datasets.append({
+            "id": str(document.id) if document else folder_name,
+            "name": folder_name,
+            "documents": 1,
+            "totalLines": total_lines,
+            "verifiedLines": total_lines,
+            "createdAt": created_at.isoformat(),
+            "size": f"{size_mb:.1f} MB",
+            "downloadUrl": f"{base_url}/documents/finalized-datasets/{folder_name}/download"
+        })
+    
+    # Sort by creation date (newest first)
+    datasets.sort(key=lambda x: x["createdAt"], reverse=True)
+    
+    return datasets
+
+
+@router.get("/finalized-datasets/{dataset_name}/download")
+def download_finalized_dataset(dataset_name: str, db: Session = Depends(get_db)):
+    """
+    📌 Download Finalized Dataset as ZIP
+    Creates and returns a zip file of the finalized dataset
+    
+    Args:
+        dataset_name: Name of the finalized dataset folder
+    
+    Returns:
+        ZIP file download
+    """
+    finalized_folder = os.path.join(BASE_UPLOAD_DIR, "finalized", dataset_name)
+    
+    if not os.path.exists(finalized_folder):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Finalized dataset not found"
+        )
+    
+    try:
+        # Create zip file
+        export_dir = os.path.join(BASE_UPLOAD_DIR, "exports")
+        os.makedirs(export_dir, exist_ok=True)
+        output_zip = os.path.join(export_dir, f"{dataset_name}_finalized.zip")
+        
+        # Use export_dataset utility to create zip
+        export_dataset(finalized_folder, output_zip)
+        
+        # Return the zip file as download
+        from fastapi.responses import FileResponse
+        return FileResponse(
+            path=output_zip,
+            filename=f"{dataset_name}_finalized.zip",
+            media_type="application/zip"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error creating zip file: {str(e)}"
+        )
+
+
 @router.get("/{document_id}", response_model=DocumentResponse)
 def get_document(document_id: UUID, request: Request, db: Session = Depends(get_db)):
     """Get a specific document."""
@@ -725,3 +850,94 @@ def export_document_dataset(document_id: UUID, db: Session = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error exporting dataset: {str(e)}"
         )
+
+
+@router.post("/{document_id}/create-finalized")
+def create_finalized_dataset(document_id: UUID, db: Session = Depends(get_db)):
+    """
+    📌 Create Finalized Dataset
+    Creates a finalized folder with verified TIFF files + GT.txt files
+    Organized by document and page structure
+    
+    Returns:
+        {
+            "status": "success",
+            "document_id": str,
+            "finalized_path": str,
+            "verified_lines_count": int,
+            "folder_structure": str
+        }
+    """
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+    
+    try:
+        ensure_dirs()
+        
+        # Create finalized folder
+        doc_name = sanitize_filename(document.original_filename)
+        finalized_base = os.path.join(BASE_UPLOAD_DIR, "finalized", doc_name)
+        os.makedirs(finalized_base, exist_ok=True)
+        
+        # Get all pages for this document
+        pages = db.query(Page).filter(Page.document_id == document_id).all()
+        
+        total_verified = 0
+        
+        for page in pages:
+            # Get verified line images for this page
+            verified_lines = db.query(LineImage).filter(
+                LineImage.page_id == page.id,
+                LineImage.verified == True
+            ).all()
+            
+            # Copy verified files directly to finalized folder
+            for line_image in verified_lines:
+                if line_image.image_path and os.path.exists(line_image.image_path):
+                    # Extract line number from original path
+                    original_filename = os.path.basename(line_image.image_path)
+                    # Create filename with page prefix: page_0001_line_0046.tif
+                    page_prefix = f"page_{page.page_number:04d}_"
+                    filename_with_page = page_prefix + original_filename
+                    
+                    # Copy TIFF file
+                    dest_tif = os.path.join(finalized_base, filename_with_page)
+                    shutil.copy2(line_image.image_path, dest_tif)
+                    
+                    # Copy or create GT.txt file
+                    if line_image.gt_text_path and os.path.exists(line_image.gt_text_path):
+                        gt_filename = filename_with_page.replace('.tif', '.gt.txt')
+                        dest_gt = os.path.join(finalized_base, gt_filename)
+                        shutil.copy2(line_image.gt_text_path, dest_gt)
+                    else:
+                        # Create GT.txt file with corrected text if available
+                        gt_filename = filename_with_page.replace('.tif', '.gt.txt')
+                        dest_gt = os.path.join(finalized_base, gt_filename)
+                        with open(dest_gt, 'w', encoding='utf-8') as f:
+                            if line_image.corrected_text:
+                                f.write(line_image.corrected_text)
+                            else:
+                                f.write("")
+                    
+                    total_verified += 1
+        
+        return {
+            "status": "success",
+            "document_id": str(document_id),
+            "document_name": doc_name,
+            "finalized_path": finalized_base,
+            "verified_lines_count": total_verified,
+            "file_naming": "page_XXXX_line_XXXX.tif + .gt.txt"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error creating finalized dataset: {str(e)}"
+        )
+
+
+
