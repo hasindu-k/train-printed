@@ -129,9 +129,11 @@ def update_gt_text_file(gt_text_path: str, content: str) -> None:
         gt_text_path: Path to the .gt.txt file
         content: Text content to write
     """
+    print(f"Updating GT file: {gt_text_path}")
     os.makedirs(os.path.dirname(gt_text_path), exist_ok=True)
     with open(gt_text_path, "w", encoding="utf-8") as f:
         f.write(content)
+        print(f"Wrote content to {gt_text_path}")
 
 
 def read_gt_text_file(gt_text_path: str) -> str:

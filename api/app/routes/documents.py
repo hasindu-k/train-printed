@@ -666,6 +666,7 @@ def fetch_lines_for_labeling(
         {
             "id": str(line.id),
             "page_id": str(line.page_id),
+            "page_number": line.page.page_number if line.page else None,
             "image_path": f"{base_url}/{line.png_path.replace(os.sep, '/')}" if line.png_path else None,
             "auto_text": line.auto_text,
             "corrected_text": line.corrected_text,
