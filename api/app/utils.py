@@ -92,6 +92,47 @@ def extract_lines_from_page(img_path: str, output_folder: str) -> int:
     except Exception as e:
         raise Exception(f"Error extracting lines: {str(e)}")
 
+def generate_line_variant_paths(image_path: str):
+    """
+    From line_0003.png → line_0003_1.{tif,png,gt.txt}
+    """
+    import re
+    directory, filename = os.path.split(image_path)
+    name, _ = os.path.splitext(filename)
+
+    # Remove suffix if exists (line_0003_1 → line_0003)
+    base_name = re.sub(r'_\d+$', '', name)
+
+    existing_files = os.listdir(directory)
+
+    max_index = 0
+    for f in existing_files:
+        if f.startswith(base_name):
+            match = re.search(rf"{base_name}_(\d+)", f)
+            if match:
+                max_index = max(max_index, int(match.group(1)))
+
+    next_index = max_index + 1
+
+    return {
+        "line_path": os.path.join(directory, f"{base_name}_{next_index}.tif"),
+        "png_path": os.path.join(directory, f"{base_name}_{next_index}.png"),
+        "gt_text_path": os.path.join(directory, f"{base_name}_{next_index}.gt.txt"),
+    }
+
+def convert_png_to_tiff(png_path: str, tiff_path: str) -> None:
+    """
+    Convert a PNG image to TIFF format.
+    
+    Args:
+        png_path: Path to the PNG file
+        tiff_path: Path to save the TIFF file
+    """
+    try:
+        img = Image.open(png_path)
+        img.save(tiff_path, format="TIFF")
+    except Exception as e:
+        raise Exception(f"Error converting PNG to TIFF: {str(e)}")
 
 def create_gt_text_files(lines_folder: str) -> int:
     """

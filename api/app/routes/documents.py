@@ -587,7 +587,7 @@ def extract_lines_from_document_endpoint(
 @router.post("/{document_id}/extract-text")
 def extract_text_from_document_lines(
     document_id: UUID,
-    lang: str = "sin",
+    lang: str = "sin+eng",
     db: Session = Depends(get_db)
 ):
     """

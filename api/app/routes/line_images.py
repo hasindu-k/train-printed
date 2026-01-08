@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, File, HTTPException, status, Query, UploadFile
+from fastapi.params import Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from uuid import UUID
@@ -10,7 +11,7 @@ from app.database import get_db
 from app.models import LineImage, Page, User
 from app.schemas import LineImageCreate, LineImageResponse, LineImageUpdate
 from app.security import get_current_user, get_current_reviewer
-from app.utils import update_gt_text_file, read_gt_text_file, extract_text_from_image
+from app.utils import convert_png_to_tiff, generate_line_variant_paths, update_gt_text_file, read_gt_text_file, extract_text_from_image
 
 router = APIRouter(prefix="/api/lines", tags=["lines"])
 
@@ -305,6 +306,60 @@ def get_line_image_file(line_image_id: UUID, db: Session = Depends(get_db)):
     
     return FileResponse(line_image.image_path, media_type="image/tiff")
 
+@router.post("/{line_id}/images")
+def add_line_image(
+    line_id: UUID,
+    image_path: str = Form(...),
+    page_id: UUID = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    BASE_DIR = "C:/github/train-printed/api/"  # or wherever your lines folder is
+
+    relative_path = image_path.replace("http://localhost:8000/", "")
+    full_path = os.path.join(BASE_DIR, relative_path)
+    print(f"Uploading line image for line ID {line_id} to path: {full_path}")
+    paths = generate_line_variant_paths(full_path)
+    print(f"Generated paths: {paths}")
+
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(paths["png_path"]), exist_ok=True)
+
+    # Save PNG
+    with open(paths["png_path"], "wb") as buffer:
+        buffer.write(file.file.read())
+
+    # Create empty GT file
+    open(paths["gt_text_path"], "w").close()
+
+    convert_png_to_tiff(paths["png_path"], paths["line_path"])
+
+    # Save DB record
+    db_line = LineImage(
+        page_id=page_id,
+       image_path=os.path.relpath(paths["line_path"], BASE_DIR).replace("/", "\\"),
+        png_path=os.path.relpath(paths["png_path"], BASE_DIR).replace("/", "\\"),
+        gt_text_path=os.path.relpath(paths["gt_text_path"], BASE_DIR).replace("/", "\\"),
+        verified=False,
+        created_at=datetime.utcnow()
+    )
+
+    print(f"Creating LineImage DB record for line ID {line_id} with paths: {paths}")
+
+    db.add(db_line)
+    db.commit()
+    db.refresh(db_line)
+
+    # send full url for image_url
+    full_image_url = f"http://localhost:8000/{db_line.png_path.replace('\\', '/')}"
+
+    return {
+        "status": "success",
+        "line_id": str(db_line.id),
+        "image_url": full_image_url,
+        "paths": paths
+    }
+
 
 # ============ BULK OPERATIONS ============
 
@@ -334,7 +389,7 @@ def get_page_lines(page_id: UUID, include_invalid: bool = False, db: Session = D
 @router.post("/{line_image_id}/extract-text")
 def extract_text(
     line_image_id: UUID,
-    lang: str = "sin",
+    lang: str = "sin+eng",
     db: Session = Depends(get_db)
 ):
     """
