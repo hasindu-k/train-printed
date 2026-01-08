@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from uuid import UUID
@@ -20,8 +20,8 @@ class LineImageCorrection(BaseModel):
 
 
 class LineImageVerification(BaseModel):
-    reviewer_id: UUID = None
-    corrected_text: str = None
+    reviewer_id: UUID | None = None
+    corrected_text: str | None = None
 
 
 # ============ BASIC CRUD ============
@@ -67,6 +67,7 @@ def get_line_image(line_image_id: UUID, db: Session = Depends(get_db)):
         "corrected_text": line_image.corrected_text,
         "gt_text_content": gt_text_content,
         "verified": line_image.verified,
+        "is_invalid": line_image.is_invalid,
         "reviewer_id": str(line_image.reviewer_id) if line_image.reviewer_id else None,
         "created_at": line_image.created_at.isoformat(),
         "updated_at": line_image.updated_at.isoformat()
@@ -92,6 +93,8 @@ def update_line_image(
         line_image.verified = line_image_data.verified
     if line_image_data.reviewer_id is not None:
         line_image.reviewer_id = line_image_data.reviewer_id
+    if line_image_data.is_invalid is not None:
+        line_image.is_invalid = line_image_data.is_invalid
     
     line_image.updated_at = datetime.utcnow()
     db.commit()
@@ -100,15 +103,67 @@ def update_line_image(
 
 
 @router.delete("/{line_image_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_line_image(line_image_id: UUID, db: Session = Depends(get_db)):
+def delete_line_image(
+    line_image_id: UUID,
+    hard: bool = Query(False, description="If true, permanently delete DB row and files. Default marks as invalid."),
+    db: Session = Depends(get_db)
+):
     line_image = db.query(LineImage).filter(LineImage.id == line_image_id).first()
     if not line_image:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Line image not found"
         )
-    db.delete(line_image)
+    # Soft delete by default: mark invalid
+    if not hard:
+        line_image.is_invalid = True
+        line_image.updated_at = datetime.utcnow()
+        db.commit()
+        return
+    # Hard delete: remove files and delete row
+    try:
+        for p in [line_image.image_path, getattr(line_image, "png_path", None), line_image.gt_text_path]:
+            if p and os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+        db.delete(line_image)
+        db.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete line image: {str(e)}")
+
+
+# ============ INVALIDATION ENDPOINTS ============
+
+@router.put("/{line_image_id}/invalidate")
+def invalidate_line(
+    line_image_id: UUID,
+    current_user: User = Depends(get_current_reviewer),
+    db: Session = Depends(get_db)
+):
+    line_image = db.query(LineImage).filter(LineImage.id == line_image_id).first()
+    if not line_image:
+        raise HTTPException(status_code=404, detail="Line image not found")
+    line_image.is_invalid = True
+    line_image.updated_at = datetime.utcnow()
     db.commit()
+    return {"status": "success", "line_id": str(line_image_id), "is_invalid": True}
+
+
+@router.put("/{line_image_id}/restore")
+def restore_line(
+    line_image_id: UUID,
+    current_user: User = Depends(get_current_reviewer),
+    db: Session = Depends(get_db)
+):
+    line_image = db.query(LineImage).filter(LineImage.id == line_image_id).first()
+    if not line_image:
+        raise HTTPException(status_code=404, detail="Line image not found")
+    line_image.is_invalid = False
+    line_image.updated_at = datetime.utcnow()
+    db.commit()
+    return {"status": "success", "line_id": str(line_image_id), "is_invalid": False}
 
 
 # ============ CORRECTION ENDPOINTS ============
@@ -254,9 +309,12 @@ def get_line_image_file(line_image_id: UUID, db: Session = Depends(get_db)):
 # ============ BULK OPERATIONS ============
 
 @router.get("/page/{page_id}/all")
-def get_page_lines(page_id: UUID, db: Session = Depends(get_db)):
+def get_page_lines(page_id: UUID, include_invalid: bool = False, db: Session = Depends(get_db)):
     """Get all lines for a specific page."""
-    lines = db.query(LineImage).filter(LineImage.page_id == page_id).all()
+    query = db.query(LineImage).filter(LineImage.page_id == page_id)
+    if not include_invalid:
+        query = query.filter(LineImage.is_invalid == False)  # noqa: E712
+    lines = query.all()
     return [
         {
             "id": str(line.id),
@@ -265,6 +323,7 @@ def get_page_lines(page_id: UUID, db: Session = Depends(get_db)):
             "auto_text": line.auto_text,
             "corrected_text": line.corrected_text,
             "verified": line.verified,
+            "is_invalid": line.is_invalid,
         }
         for line in lines
     ]

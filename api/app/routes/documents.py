@@ -754,6 +754,7 @@ def fetch_lines_for_labeling(
     verified: bool = None,
     page_num: int = None,
     assigned_to: UUID = None,
+    include_invalid: bool = False,
     db: Session = Depends(get_db)
 ):
     """
@@ -773,6 +774,10 @@ def fetch_lines_for_labeling(
     
     # Query line images
     query = db.query(LineImage).filter(LineImage.page_id.in_(page_ids))
+
+    # Exclude invalid lines by default
+    if not include_invalid:
+        query = query.filter(LineImage.is_invalid == False)  # noqa: E712
     
     if verified is not None:
         query = query.filter(LineImage.verified == verified)
@@ -802,6 +807,7 @@ def fetch_lines_for_labeling(
             "auto_text": line.auto_text,
             "corrected_text": line.corrected_text,
             "verified": line.verified,
+            "is_invalid": line.is_invalid,
             "reviewer_id": str(line.reviewer_id) if line.reviewer_id else None,
         }
         for line in lines

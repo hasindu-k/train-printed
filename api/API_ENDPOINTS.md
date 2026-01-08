@@ -579,6 +579,7 @@ Get line image with all metadata
   "corrected_text": null,
   "gt_text_content": "",
   "verified": false,
+  "is_invalid": false,
   "reviewer_id": null,
   "created_at": "2024-01-05T...",
   "updated_at": "2024-01-05T..."
@@ -666,13 +667,37 @@ Update line image (generic)
 
 ### DELETE /lines/{line_id}
 
-Delete line image
+Soft-delete (mark as invalid) a line image. To permanently remove the DB row and files, pass `?hard=true`.
+
+**Query params:**
+
+- `hard` (boolean, default `false`): when `true`, permanently deletes and removes image/png/gt files from disk.
 
 **Response:** `204 No Content`
 
+### PUT /lines/{line_id}/invalidate
+
+Mark a line as invalid (bad crop). Reviewer/Admin only.
+
+**Response:** `200 OK`
+
+```json
+{ "status": "success", "line_id": "uuid", "is_invalid": true }
+```
+
+### PUT /lines/{line_id}/restore
+
+Restore a previously invalid line (set `is_invalid=false`). Reviewer/Admin only.
+
+**Response:** `200 OK`
+
+```json
+{ "status": "success", "line_id": "uuid", "is_invalid": false }
+```
+
 ### GET /lines/page/{page_id}/all
 
-Get all lines for a page
+Get all lines for a page. Excludes invalid lines by default; include them with `?include_invalid=true`.
 
 **Response:** `200 OK`
 
@@ -684,7 +709,8 @@ Get all lines for a page
     "image_path": "...",
     "auto_text": "...",
     "corrected_text": "...",
-    "verified": false
+    "verified": false,
+    "is_invalid": false
   }
 ]
 ```

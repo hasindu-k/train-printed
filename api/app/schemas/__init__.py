@@ -87,6 +87,7 @@ class LineImageUpdate(BaseModel):
     corrected_text: Optional[str] = None
     verified: Optional[bool] = None
     reviewer_id: Optional[UUID] = None
+    is_invalid: Optional[bool] = None
 
 
 class LineImageResponse(BaseModel):
@@ -97,6 +98,7 @@ class LineImageResponse(BaseModel):
     auto_text: Optional[str]
     corrected_text: Optional[str]
     verified: bool
+    is_invalid: bool
     reviewer_id: Optional[UUID]
     created_at: datetime
     updated_at: datetime

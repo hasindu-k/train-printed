@@ -62,6 +62,7 @@ class LineImage(Base):
     auto_text = Column(String, nullable=True)
     corrected_text = Column(String, nullable=True)
     verified = Column(Boolean, nullable=False, default=False)
+    is_invalid = Column(Boolean, nullable=False, default=False)  # soft-delete / bad crop flag
     reviewer_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
