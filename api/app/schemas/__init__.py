@@ -107,3 +107,16 @@ class LineImageResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class UserActivityResponse(BaseModel):
+    id: UUID
+    name: str
+    email: str
+    role: str
+    status: str  # "active" or "inactive"
+    linesAnnotated: int
+    linesVerified: int
+    lastActive: Optional[datetime]
+
+    class Config:
+        from_attributes = True

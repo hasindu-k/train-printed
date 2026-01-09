@@ -2,10 +2,12 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case
 from datetime import datetime, timedelta
+from typing import List
 
 from app.database import get_db
 from app.models import LineImage, User
 from app.security import get_current_user
+from app.schemas import UserActivityResponse
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -139,3 +141,79 @@ def get_verification_weekly(
         }
         for row in rows
     ]
+
+@router.get("/users/activity", response_model=List[UserActivityResponse])
+def get_users_activity(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Return user activity aggregation with line annotation and verification counts.
+    
+    Data sources:
+    - linesAnnotated: count of lines created/assigned (LineImage.created_at)
+    - linesVerified: count of verified lines (LineImage.verified == True)
+    - lastActive: max(LineImage.created_at, LineImage.updated_at, User.last_login_at)
+    - status: based on is_active and last_login_at
+    """
+    
+    # Get all active users and their activity metrics
+    results = db.query(
+        User.id,
+        User.name,
+        User.email,
+        User.role,
+        User.is_active,
+        User.last_login_at,
+        func.count(LineImage.id).label("total_lines"),
+        func.sum(case((LineImage.verified == True, 1), else_=0)).label("verified_lines"),  # noqa: E712
+    ).outerjoin(
+        LineImage,
+        (LineImage.reviewer_id == User.id) & (LineImage.is_invalid == False)  # noqa: E712
+    ).group_by(
+        User.id,
+        User.name,
+        User.email,
+        User.role,
+        User.is_active,
+        User.last_login_at,
+    ).all()
+
+    # For each user, also get their max activity timestamp
+    activities = []
+    for user in results:
+        # Get the most recent activity timestamp for this user
+        max_activity = db.query(
+            func.greatest(
+                func.max(LineImage.created_at),
+                func.max(LineImage.updated_at),
+                user.last_login_at
+            )
+        ).filter(
+            LineImage.reviewer_id == user.id,
+            LineImage.is_invalid == False  # noqa: E712
+        ).scalar()
+
+        # If no lineimage activity, use last_login_at
+        last_active = max_activity or user.last_login_at
+
+        # Determine status
+        status = "active" if user.is_active else "inactive"
+
+        activities.append({
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role,
+            "status": status,
+            "linesAnnotated": user.total_lines or 0,
+            "linesVerified": user.verified_lines or 0,
+            "lastActive": last_active,
+        })
+
+    # Sort by most recent activity
+    activities.sort(
+        key=lambda x: x["lastActive"] if x["lastActive"] else datetime.min,
+        reverse=True
+    )
+
+    return activities
