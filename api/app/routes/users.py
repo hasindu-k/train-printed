@@ -105,7 +105,7 @@ def create_user_admin(
         name=user.name,
         email=user.email,
         hashed_password=hash_password(user.password),
-        role="admin",
+        role=user.role,
         is_active=True
     )
     db.add(db_user)
