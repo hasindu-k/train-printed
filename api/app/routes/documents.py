@@ -75,17 +75,25 @@ async def upload_documents(
                     detail=f"Unsupported file type: {filename}"
                 )
 
+            # if image generate a name instead of original name before saving
+            if ALLOWED_EXTENSIONS[ext] == "image":
+                import uuid
+                # Generate a unique name with the same extension
+                generated_name = f"{uuid.uuid4().hex}.{ext}"
+            else:
+                generated_name = filename  # keep original name for PDFs
+
             # 🔹 Save file
-            file_path = os.path.join(BASE_UPLOAD_DIR, filename)
+            file_path = os.path.join(BASE_UPLOAD_DIR, generated_name)
             with open(file_path, "wb") as f:
                 content = await file.read()
                 f.write(content)
 
             # 🔹 Sanitize name
-            doc_name = sanitize_filename(filename)
+            doc_name = sanitize_filename(generated_name)
 
             # 🔹 Determine pages
-            if ALLOWED_EXTENSIONS[ext] == "pdf":
+            if ALLOWED_EXTENSIONS[ext] == "pdf":    
                 total_pages = get_no_of_pages_in_pdf(file_path) or 0
                 doc_type = "pdf"
             else:
