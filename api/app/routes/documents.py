@@ -425,9 +425,19 @@ def convert_pdf_to_pages(document_id: UUID, db: Session = Depends(get_db)):
         document.status = "processing"
         db.commit()
         
+        document_type = document.document_type
         # Convert PDF to TIFF
         pages_folder = document.pages_folder
-        num_pages = create_tiff_from_pdf(document.stored_path, pages_folder)
+        if document_type == "pdf":
+            print("pdf")
+            num_pages = create_tiff_from_pdf(document.stored_path, pages_folder)
+        elif document_type == "image":
+            print("image")
+            os.makedirs(pages_folder, exist_ok=True)
+            from app.utils import convert_to_tiff
+            output_file = os.path.join(pages_folder, "page_0001.tif")
+            convert_to_tiff(document.stored_path, output_file)
+            num_pages = 1
         
         # Create DB records for pages
         for i in range(1, num_pages + 1):

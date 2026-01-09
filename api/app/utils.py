@@ -134,6 +134,22 @@ def convert_png_to_tiff(png_path: str, tiff_path: str) -> None:
     except Exception as e:
         raise Exception(f"Error converting PNG to TIFF: {str(e)}")
 
+
+def convert_to_tiff(input_path: str, output_path: str) -> None:
+    """
+    Convert any supported image format to TIFF.
+    
+    Args:
+        input_path: Path to the input image file
+        output_path: Path to save the TIFF file
+    """
+    try:
+        with Image.open(input_path) as img:
+            img.save(output_path, format="TIFF")
+    except Exception as e:
+        raise Exception(f"Error converting {input_path} to TIFF: {str(e)}")
+
+
 def create_gt_text_files(lines_folder: str) -> int:
     """
     Create ground truth text files for each line image.
