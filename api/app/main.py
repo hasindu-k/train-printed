@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 from app.database import Base, engine
-from app.routes import auth, users, documents, pages, line_images
+from app.routes import auth, users, documents, pages, line_images, dashboard
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -38,6 +38,7 @@ app.include_router(users.router)
 app.include_router(documents.router)
 app.include_router(pages.router)
 app.include_router(line_images.router)
+app.include_router(dashboard.router)
 
 
 @app.get("/", tags=["root"])

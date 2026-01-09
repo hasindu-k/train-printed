@@ -251,6 +251,25 @@ Check API health status
 }
 ```
 
+---
+
+## Dashboard
+
+### GET /dashboard/verification-stats
+
+Aggregated line verification counts (authenticated).
+
+**Response:** `200 OK`
+
+```json
+{
+  "totalLines": 6550,
+  "verifiedLines": 5190,
+  "unverifiedLines": 1360,
+  "pendingReview": 450
+}
+```
+
 "id": "uuid",
 "name": "John Reviewer",
 "email": "john@example.com",
