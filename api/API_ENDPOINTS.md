@@ -270,6 +270,19 @@ Aggregated line verification counts (authenticated).
 }
 ```
 
+### GET /dashboard/team-activity?range=weekly
+
+Verified line counts per reviewer/annotator (authenticated). Range options: `weekly` (default), `monthly`, `all`.
+
+**Response:** `200 OK`
+
+```json
+[
+  { "user_id": "...", "name": "John Doe", "verified_lines": 456 },
+  { "user_id": "...", "name": "Jane Smith", "verified_lines": 389 }
+]
+```
+
 "id": "uuid",
 "name": "John Reviewer",
 "email": "john@example.com",

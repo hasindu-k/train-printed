@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from datetime import datetime, timedelta
 
 from app.database import get_db
-from app.models import LineImage
+from app.models import LineImage, User
 from app.security import get_current_user
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -42,3 +43,53 @@ def get_verification_stats(
         "unverified_lines": unverified_lines,
         "pending_reviews": pending_review,
     }
+
+
+@router.get("/team-activity")
+def get_team_activity(
+    range: str = Query("weekly", description="Range for stats: weekly, monthly, all"),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Return verified line counts per reviewer (annotator activity)."""
+
+    now = datetime.utcnow()
+    if range == "weekly":
+        since = now - timedelta(days=7)
+    elif range == "monthly":
+        since = now - timedelta(days=30)
+    elif range == "all":
+        since = None
+    else:
+        # default to weekly if invalid value provided
+        since = now - timedelta(days=7)
+
+    query = (
+        db.query(
+            User.id.label("user_id"),
+            User.name.label("name"),
+            func.count(LineImage.id).label("verified_lines"),
+        )
+        .join(LineImage, LineImage.reviewer_id == User.id)
+        .filter(LineImage.is_invalid == False)  # noqa: E712
+        .filter(LineImage.verified == True)  # noqa: E712
+    )
+
+    if since:
+        query = query.filter(LineImage.updated_at >= since)
+
+    results = (
+        query
+        .group_by(User.id, User.name)
+        .order_by(func.count(LineImage.id).desc())
+        .all()
+    )
+
+    return [
+        {
+            "user_id": str(row.user_id),
+            "name": row.name,
+            "verified_lines": row.verified_lines,
+        }
+        for row in results
+    ]
