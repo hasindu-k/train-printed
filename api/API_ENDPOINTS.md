@@ -283,6 +283,19 @@ Verified line counts per reviewer/annotator (authenticated). Range options: `wee
 ]
 ```
 
+### GET /dashboard/verification-weekly?days=7
+
+Daily verified/pending counts over the last N days (default 7). Grouped by day of week label.
+
+**Response:** `200 OK`
+
+```json
+[
+  { "day": "Mon", "verified": 245, "pending": 56 },
+  { "day": "Tue", "verified": 312, "pending": 48 }
+]
+```
+
 "id": "uuid",
 "name": "John Reviewer",
 "email": "john@example.com",

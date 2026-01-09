@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, case
 from datetime import datetime, timedelta
 
 from app.database import get_db
@@ -92,4 +92,50 @@ def get_team_activity(
             "verified_lines": row.verified_lines,
         }
         for row in results
+    ]
+
+
+@router.get("/verification-weekly")
+def get_verification_weekly(
+    days: int = Query(7, ge=1, le=60, description="Number of days to look back (default 7)"),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Return daily verified/pending counts for the last N days."""
+
+    since = datetime.utcnow() - timedelta(days=days - 1)
+
+    day_trunc = func.date_trunc("day", LineImage.updated_at).label("day")
+    day_label = func.to_char(func.date_trunc("day", LineImage.updated_at), "Dy").label("day_label")
+
+    query = (
+        db.query(
+            day_trunc,
+            day_label,
+            func.sum(case((LineImage.verified == True, 1), else_=0)).label("verified"),  # noqa: E712
+            func.sum(
+                case(
+                    (
+                        (LineImage.verified == False) & (LineImage.corrected_text.isnot(None)),  # noqa: E712
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("pending"),
+        )
+        .filter(LineImage.is_invalid == False)  # noqa: E712
+        .filter(LineImage.updated_at >= since)
+        .group_by(day_trunc, day_label)
+        .order_by(day_trunc.asc())
+    )
+
+    rows = query.all()
+
+    return [
+        {
+            "day": row.day_label,
+            "verified": int(row.verified or 0),
+            "pending": int(row.pending or 0),
+        }
+        for row in rows
     ]
