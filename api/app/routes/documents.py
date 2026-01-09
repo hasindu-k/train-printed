@@ -1,3 +1,4 @@
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case
@@ -34,58 +35,89 @@ def ensure_dirs():
     os.makedirs(PAGES_DIR, exist_ok=True)
     os.makedirs(LINES_DIR, exist_ok=True)
 
+ALLOWED_EXTENSIONS = {
+    "pdf": "pdf",
+    "jpg": "image",
+    "jpeg": "image",
+    "png": "image",
+    "webp": "image"
+}
 
 # ============ DOCUMENT MANAGEMENT ============
-
-@router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
-async def upload_document(
-    file: UploadFile = File(...),
+@router.post(
+    "/upload",
+    response_model=List[DocumentResponse],
+    status_code=status.HTTP_201_CREATED
+)
+async def upload_documents(
+    files: List[UploadFile] = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    📌 1️⃣ Upload & Register Document
-    Upload PDF and create document record (Authenticated users)
+    📌 Upload & Register Multiple Documents (PDF + Images)
+    Authenticated users only
     """
     ensure_dirs()
-    
-    if not file.filename.endswith('.pdf'):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF files are allowed"
-        )
-    
-    try:
-        # Save uploaded file
-        file_path = os.path.join(BASE_UPLOAD_DIR, file.filename)
-        with open(file_path, "wb") as f:
-            content = await file.read()
-            f.write(content)
-        
-        # Extract document name from filename
-        doc_name = sanitize_filename(file.filename)
+    uploaded_documents = []
 
-        # if pdf get number of pages
-        from app.utils import get_no_of_pages_in_pdf
-        num_pages = get_no_of_pages_in_pdf(file_path)
-        
-        # Create document record
-        db_document = Document(
-            original_filename=file.filename,
-            stored_path=file_path,
-            pages_folder=f"{PAGES_DIR}/{doc_name}",
-            status="uploaded",
-            total_pages=num_pages if num_pages is not None else 0
-        )
-        db.add(db_document)
-        db.commit()
-        db.refresh(db_document)
-        
-        return db_document
+    from app.utils import get_no_of_pages_in_pdf
+
+    try:
+        for file in files:
+            # 🔹 Get file extension
+            filename = file.filename
+            ext = filename.split(".")[-1].lower()
+
+            if ext not in ALLOWED_EXTENSIONS:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Unsupported file type: {filename}"
+                )
+
+            # 🔹 Save file
+            file_path = os.path.join(BASE_UPLOAD_DIR, filename)
+            with open(file_path, "wb") as f:
+                content = await file.read()
+                f.write(content)
+
+            # 🔹 Sanitize name
+            doc_name = sanitize_filename(filename)
+
+            # 🔹 Determine pages
+            if ALLOWED_EXTENSIONS[ext] == "pdf":
+                total_pages = get_no_of_pages_in_pdf(file_path) or 0
+                doc_type = "pdf"
+            else:
+                total_pages = 1
+                doc_type = "image"
+
+            # 🔹 Create DB record
+            db_document = Document(
+                original_filename=filename,
+                stored_path=file_path,
+                pages_folder=f"{PAGES_DIR}/{doc_name}",
+                status="uploaded",
+                total_pages=total_pages,
+                document_type=doc_type,
+                uploaded_by=current_user.id
+            )
+
+            db.add(db_document)
+            db.commit()
+            db.refresh(db_document)
+
+            uploaded_documents.append(db_document)
+
+        return uploaded_documents
+
+    except HTTPException:
+        raise
     except Exception as e:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error uploading file: {str(e)}"
+            detail=f"Upload failed: {str(e)}"
         )
 
 
@@ -131,6 +163,8 @@ def list_documents(request: Request, db: Session = Depends(get_db)):
             total_pages=doc.total_pages,
             lines_extracted=counts_map.get(doc.id, {}).get("lines_extracted", 0),
             lines_verified=counts_map.get(doc.id, {}).get("lines_verified", 0),
+            document_type=doc.document_type,
+            uploaded_by=doc.uploaded_by,
             created_at=doc.created_at,
             updated_at=doc.updated_at,
         )

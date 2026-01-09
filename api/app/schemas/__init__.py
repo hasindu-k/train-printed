@@ -49,6 +49,8 @@ class DocumentResponse(BaseModel):
     total_pages: int
     lines_extracted: int = 0
     lines_verified: int = 0
+    document_type: str
+    uploaded_by: UUID
     created_at: datetime
     updated_at: datetime
 

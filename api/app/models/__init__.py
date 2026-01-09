@@ -18,6 +18,8 @@ class User(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    documents = relationship("Document", back_populates="uploader")
+    
     line_images = relationship("LineImage", back_populates="reviewer")
 
 
@@ -30,8 +32,12 @@ class Document(Base):
     pages_folder = Column(String(255), nullable=True)  # pages/<doc_name>/
     status = Column(String(50), nullable=False)  # uploaded, processing, processed, extracted, failed
     total_pages = Column(Integer, nullable=False, default=0)
+    document_type = Column(String(50), nullable=False)  # pdf, image
+    uploaded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    uploader = relationship("User", back_populates="documents")
 
     pages = relationship("Page", back_populates="document", cascade="all, delete-orphan")
 
