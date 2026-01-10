@@ -237,7 +237,7 @@ def cleanup_folder(folder_path: str) -> None:
         shutil.rmtree(folder_path)
 
 
-def extract_text_from_image(image_path: str, lang: str = "eng") -> str:
+def extract_text_from_image(image_path: str, lang: str = "eng", config: str = "") -> str:
     """Extract text from image using Tesseract OCR.
     
     Args:
@@ -255,7 +255,7 @@ def extract_text_from_image(image_path: str, lang: str = "eng") -> str:
             raise FileNotFoundError(f"Image not found: {image_path}")
         
         img = Image.open(image_path)
-        text = pytesseract.image_to_string(img, lang=lang)
+        text = pytesseract.image_to_string(img, lang=lang, config=config)
         return text.strip()
     except ImportError:
         raise ImportError("pytesseract is not installed. Run: pip install pytesseract")

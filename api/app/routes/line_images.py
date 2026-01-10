@@ -389,7 +389,7 @@ def get_page_lines(page_id: UUID, include_invalid: bool = False, db: Session = D
 @router.post("/{line_image_id}/extract-text")
 def extract_text(
     line_image_id: UUID,
-    lang: str = "sin+eng",
+    lang: str = "sin_eng_custom",
     db: Session = Depends(get_db)
 ):
     """
@@ -418,7 +418,7 @@ def extract_text(
     
     try:
         # Extract text using Tesseract
-        extracted_text = extract_text_from_image(line_image.image_path, lang=lang)
+        extracted_text = extract_text_from_image(line_image.image_path, lang=lang, config="--psm 7")
         
         # Update auto_text in database
         line_image.auto_text = extracted_text
