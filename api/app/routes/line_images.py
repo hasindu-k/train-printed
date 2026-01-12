@@ -224,7 +224,7 @@ def verify_line(
     """
     📌 9️⃣ Verify Line
     Mark a line as verified (Reviewer or Admin only)
-    Optionally update corrected text and GT.txt file
+    Optionally update corrected text and GT.txt file with NFD Normalization and Cleaning
     """
     line_image = db.query(LineImage).filter(LineImage.id == line_image_id).first()
     if not line_image:
@@ -232,31 +232,64 @@ def verify_line(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Line image not found"
         )
-    
 
     try:
         # Update corrected text if provided
         if verification.corrected_text is not None:
-            line_image.corrected_text = verification.corrected_text
+            import unicodedata
             
-            # Update .gt.txt file on disk
+            raw_text = verification.corrected_text
+            
+            # --- START DEBUG PRINTS ---
+            print(f"\n[DEBUG] Processing Line: {line_image_id}")
+            print(f"[DEBUG] RAW INPUT (Visual): {raw_text}")
+            print(f"[DEBUG] RAW INPUT (Ascii):  {ascii(raw_text)}")
+            # --------------------------
+
+            # STEP 1: Remove Invisible "Garbage" Characters
+            # \u200c = Zero Width Non-Joiner (The invisible trap)
+            # \u200d = Zero Width Joiner
+            sanitized_text = raw_text.replace('\u200c', '').replace('\u200d', '')
+
+            # STEP 2: Normalize to NFD (Split combined letters)
+            # This ensures "k" + "o" becomes "k" + "e" + "aa"
+            normalized_text = unicodedata.normalize("NFD", sanitized_text).strip()
+
+            # --- END DEBUG PRINTS ---
+            print(f"[DEBUG] CLEANED (Ascii):    {ascii(normalized_text)}")
+            print(f"[DEBUG] CLEANED (Visual):   {normalized_text}\n")
+            # ------------------------
+
+            # Update Database Object
+            line_image.corrected_text = normalized_text
+            
+            # Update .gt.txt file on disk with CLEANED text
             if line_image.gt_text_path:
-                update_gt_text_file(line_image.gt_text_path, verification.corrected_text)
+                # Ensure we write the cleaned version, not the raw version
+                update_gt_text_file(line_image.gt_text_path, normalized_text)
         
+        # Mark as verified
         line_image.verified = True
+        
         # Set reviewer to current user if not specified
         line_image.reviewer_id = verification.reviewer_id if verification.reviewer_id else current_user.id
         
         line_image.updated_at = datetime.utcnow()
+        
         db.commit()
         db.refresh(line_image)
         
         return {
             "status": "success",
             "line_id": str(line_image_id),
-            "verified": True
+            "verified": True,
+            "final_text_preview": line_image.corrected_text
         }
+
     except Exception as e:
+        # Rollback in case of error to prevent partial states
+        db.rollback()
+        print(f"[ERROR] Failed to verify line {line_image_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error verifying line: {str(e)}"

@@ -1,10 +1,42 @@
 import os
+import re
 import shutil
 import cv2
 import numpy as np
 from PIL import Image
 from pdf2image import convert_from_path
 from pathlib import Path
+from fastapi import Request
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+def get_base_url(request: Request = None) -> str:
+    """
+    Get the base URL for the application.
+    
+    Priority:
+    1. APP_BASE_URL environment variable (for production/proxy scenarios)
+    2. Request base URL (for development)
+    
+    Args:
+        request: FastAPI Request object (optional)
+        
+    Returns:
+        Base URL without trailing slash
+    """
+    # Check environment variable first
+    env_base_url = os.getenv("APP_BASE_URL")
+    if env_base_url:
+        return env_base_url.rstrip('/')
+    
+    # Fall back to request base URL
+    if request:
+        return str(request.base_url).rstrip('/')
+    
+    # Default fallback
+    return "http://localhost:8000"
 
 
 def sanitize_filename(filename: str) -> str:
@@ -192,6 +224,56 @@ def update_gt_text_file(gt_text_path: str, content: str) -> None:
         f.write(content)
         print(f"Wrote content to {gt_text_path}")
 
+
+import unicodedata
+def clean_sinhala_text(text: str) -> str:
+    if not text:
+        return ""
+    
+    # 1. Remove ZWNJ (U+200C) and ZWJ (U+200D)
+    # These often creep in from PDF copy-pastes and confuse the model.
+    text = text.replace('\u200c', '').replace('\u200d', '')
+    
+    # 2. Apply NFD Normalization (Standardize composite characters)
+    # This splits 'k' + 'o' -> 'k' + 'e' + 'aa'
+    text = unicodedata.normalize("NFD", text)
+    
+    # 3. Strip extra whitespace (leading/trailing/double spaces)
+    text = " ".join(text.split())
+    
+    return text
+
+def prettify_sinhala_for_display(text: str) -> str:
+    """
+    Converts robust 'split' Sinhala (used for AI) back into 
+    'combined' Sinhala (with ZWJ) for pretty rendering.
+    """
+    if not text:
+        return ""
+
+    # 1. Fix Rakaaraansha (The "Pra", "Kra", "Gra" curve)
+    # Pattern: Consonant + Virama + R -> Consonant + Virama + ZWJ + R
+    # This turns 'ප්ර' into 'ප්‍ර'
+    text = re.sub(r'([ක-ෆ])\u0dca\u0dbb', r'\1\u0dca\u200d\u0dbb', text)
+    
+
+    # 2. Fix Yansaya (The "Kya", "Dya" joint)
+    # Pattern: Consonant + Virama + Y -> Consonant + Virama + ZWJ + Y
+    # This turns 'ක්ය' into 'ක්‍ය'
+    text = re.sub(r'([ක-ෆ])\u0dca\u0dba', r'\1\u0dca\u200d\u0dba', text)
+    
+    # 3. Fix Repha (The top 'r' mark like in 'dharma')
+    # Pattern: R + Virama + Consonant -> R + Virama + ZWJ + Consonant
+    # This turns 'ර්ම' into 'ර්‍ම' (depending on font preference)
+    # text = re.sub(r'\u0dbb\u0dca([ක-ෆ])', r'\u0dbb\u0dca\u200d\u1', text)
+
+    return text
+
+def to_standard_output(nfd_text: str) -> str:
+        """Use this for GEMINI, FRONTEND, or EXPORTS"""
+        if not nfd_text: return ""
+        # Convert back to NFC (Standard Web Format)
+        return unicodedata.normalize("NFC", nfd_text)
 
 def read_gt_text_file(gt_text_path: str) -> str:
     """

@@ -19,6 +19,7 @@ from app.utils import (
     read_gt_text_file,
     export_dataset,
     extract_text_from_image,
+    get_base_url,
 )
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -160,7 +161,7 @@ def list_documents(request: Request, db: Session = Depends(get_db)):
     }
 
     # Construct base URL
-    base_url = str(request.base_url).rstrip('/')
+    base_url = get_base_url(request)
 
     return [
         DocumentResponse(
@@ -243,7 +244,7 @@ def list_finalized_datasets(request: Request, db: Session = Depends(get_db)):
         created_at = datetime.fromtimestamp(os.path.getctime(folder_path))
         
         # Construct base URL
-        base_url = str(request.base_url).rstrip('/')
+        base_url = get_base_url(request)
         
         datasets.append({
             "id": str(document.id) if document else folder_name,
@@ -328,7 +329,7 @@ def get_document(document_id: UUID, request: Request, db: Session = Depends(get_
     )
 
     # Construct base URL
-    base_url = str(request.base_url).rstrip('/')
+    base_url = get_base_url(request)
 
     return DocumentResponse(
         id=document.id,
@@ -825,7 +826,12 @@ def fetch_lines_for_labeling(
     page_ids = [p.id for p in pages]
     
     # Query line images
-    query = db.query(LineImage).filter(LineImage.page_id.in_(page_ids))
+    query = (
+    db.query(LineImage)
+    .join(Page, LineImage.page_id == Page.id)
+    .filter(LineImage.page_id.in_(page_ids))
+    .order_by(Page.page_number.asc(), LineImage.id.asc())
+)
 
     # Exclude invalid lines by default
     if not include_invalid:
@@ -846,9 +852,9 @@ def fetch_lines_for_labeling(
         query = query.filter(LineImage.reviewer_id == assigned_to)
     
     lines = query.all()
-    
+
     # Construct base URL
-    base_url = str(request.base_url).rstrip('/')
+    base_url = get_base_url(request)
     
     return [
         {
