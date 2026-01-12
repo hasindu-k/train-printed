@@ -11,7 +11,7 @@ from app.database import get_db
 from app.models import LineImage, Page, User
 from app.schemas import LineImageCreate, LineImageResponse, LineImageUpdate
 from app.security import get_current_user, get_current_reviewer
-from app.utils import convert_png_to_tiff, generate_line_variant_paths, update_gt_text_file, read_gt_text_file, extract_text_from_image
+from app.utils import clean_sinhala_text, convert_png_to_tiff, generate_line_variant_paths, update_gt_text_file, read_gt_text_file, extract_text_from_image
 
 router = APIRouter(prefix="/api/lines", tags=["lines"])
 
@@ -236,34 +236,12 @@ def verify_line(
     try:
         # Update corrected text if provided
         if verification.corrected_text is not None:
-            import unicodedata
-            
-            raw_text = verification.corrected_text
-            
-            # --- START DEBUG PRINTS ---
-            print(f"\n[DEBUG] Processing Line: {line_image_id}")
-            print(f"[DEBUG] RAW INPUT (Visual): {raw_text}")
-            print(f"[DEBUG] RAW INPUT (Ascii):  {ascii(raw_text)}")
-            # --------------------------
-
-            # STEP 1: Remove Invisible "Garbage" Characters
-            # \u200c = Zero Width Non-Joiner (The invisible trap)
-            # \u200d = Zero Width Joiner
-            sanitized_text = raw_text.replace('\u200c', '').replace('\u200d', '')
-
-            # STEP 2: Normalize to NFD (Split combined letters)
-            # This ensures "k" + "o" becomes "k" + "e" + "aa"
-            normalized_text = unicodedata.normalize("NFD", sanitized_text).strip()
-
-            # --- END DEBUG PRINTS ---
-            print(f"[DEBUG] CLEANED (Ascii):    {ascii(normalized_text)}")
-            print(f"[DEBUG] CLEANED (Visual):   {normalized_text}\n")
+            normalized_text = clean_sinhala_text(verification.corrected_text)
             # ------------------------
 
             # Update Database Object
             line_image.corrected_text = normalized_text
             
-            # Update .gt.txt file on disk with CLEANED text
             if line_image.gt_text_path:
                 # Ensure we write the cleaned version, not the raw version
                 update_gt_text_file(line_image.gt_text_path, normalized_text)
