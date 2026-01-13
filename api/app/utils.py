@@ -230,21 +230,13 @@ def clean_sinhala_text(text: str) -> str:
     if not text:
         return ""
     
-    # 1. Remove ZWNJ (U+200C) and ZWJ (U+200D)
-    # These often creep in from PDF copy-pastes and confuse the model.
-    text = text.replace('\u200c', '').replace('\u200d', '')
+    text = text.replace('\u200c', '') # Remove ZWNJ if any
+    text = text.replace('\u0dca\u0dbb', '\u0dca\u200d\u0dbb') # Fix Rayanna + Virama + Ya
+    text = re.sub(r'(?<!\u0dbb)\u0dca\u0dba', '\u0dca\u200d\u0dba', text) # Fix Rayanna + Virama + Wa
 
-    # STEP 2: Normalize to NFD (Split combined letters)
-    # This ensures "k" + "o" becomes "k" + "e" + "aa"
-    normalized_text = unicodedata.normalize("NFD", text).strip()
-    
-    # 2. Apply NFD Normalization (Standardize composite characters)
-    # This splits 'k' + 'o' -> 'k' + 'e' + 'aa'
-    text = unicodedata.normalize("NFD", normalized_text)
-    
-    # 3. Strip extra whitespace (leading/trailing/double spaces)
+    text = unicodedata.normalize("NFC", text)
     text = " ".join(text.split())
-    
+
     return text
 
 def to_standard_output(nfd_text: str) -> str:

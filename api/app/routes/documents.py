@@ -944,7 +944,17 @@ def create_finalized_dataset(document_id: UUID, db: Session = Depends(get_db)):
         
         # Create finalized folder
         doc_name = sanitize_filename(document.original_filename)
-        finalized_base = os.path.join(BASE_UPLOAD_DIR, "finalized", doc_name)
+        finalized_root = os.path.join(BASE_UPLOAD_DIR, "finalized")
+        finalized_base = os.path.join(finalized_root, doc_name)
+
+        # Safety check
+        if (
+            os.path.exists(finalized_base)
+            and os.path.isdir(finalized_base)
+            and os.path.commonpath([finalized_root, finalized_base]) == finalized_root
+        ):
+            shutil.rmtree(finalized_base)
+
         os.makedirs(finalized_base, exist_ok=True)
         
         # Get all pages for this document
@@ -961,33 +971,45 @@ def create_finalized_dataset(document_id: UUID, db: Session = Depends(get_db)):
             
             # Copy verified files directly to finalized folder
             for line_image in verified_lines:
-                if line_image.image_path and os.path.exists(line_image.image_path):
-                    # Extract line number from original path
-                    original_filename = os.path.basename(line_image.image_path)
-                    # Create filename with page prefix: page_0001_line_0046.tif
-                    page_prefix = f"page_{page.page_number:04d}_"
-                    filename_with_page = page_prefix + original_filename
-                    
-                    # Copy TIFF file
-                    dest_tif = os.path.join(finalized_base, filename_with_page)
-                    shutil.copy2(line_image.image_path, dest_tif)
-                    
-                    # Copy or create GT.txt file
-                    if line_image.gt_text_path and os.path.exists(line_image.gt_text_path):
-                        gt_filename = filename_with_page.replace('.tif', '.gt.txt')
-                        dest_gt = os.path.join(finalized_base, gt_filename)
-                        shutil.copy2(line_image.gt_text_path, dest_gt)
-                    else:
-                        # Create GT.txt file with corrected text if available
-                        gt_filename = filename_with_page.replace('.tif', '.gt.txt')
-                        dest_gt = os.path.join(finalized_base, gt_filename)
-                        with open(dest_gt, 'w', encoding='utf-8') as f:
-                            if line_image.corrected_text:
-                                f.write(line_image.corrected_text)
-                            else:
-                                f.write("")
-                    
-                    total_verified += 1
+                if not line_image.image_path or not os.path.exists(line_image.image_path):
+                    continue
+
+                # Determine GT availability
+                has_gt_file = (
+                    line_image.gt_text_path
+                    and os.path.exists(line_image.gt_text_path)
+                    and os.path.getsize(line_image.gt_text_path) > 0
+                )
+
+                has_corrected_text = (
+                    line_image.corrected_text
+                    and line_image.corrected_text.strip() != ""
+                )
+
+                # ❌ Skip if no GT at all
+                if not has_gt_file and not has_corrected_text:
+                    continue
+
+                # Extract filename
+                original_filename = os.path.basename(line_image.image_path)
+                page_prefix = f"page_{page.page_number:04d}_"
+                filename_with_page = page_prefix + original_filename
+
+                # ✅ Copy TIFF
+                dest_tif = os.path.join(finalized_base, filename_with_page)
+                shutil.copy2(line_image.image_path, dest_tif)
+
+                # ✅ Handle GT.txt
+                gt_filename = filename_with_page.replace(".tif", ".gt.txt")
+                dest_gt = os.path.join(finalized_base, gt_filename)
+
+                if has_gt_file:
+                    shutil.copy2(line_image.gt_text_path, dest_gt)
+                else:
+                    with open(dest_gt, "w", encoding="utf-8") as f:
+                        f.write(line_image.corrected_text.strip())
+
+                total_verified += 1
         
         return {
             "status": "success",
