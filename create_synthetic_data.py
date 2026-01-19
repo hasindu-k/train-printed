@@ -4,7 +4,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
 
 # ================= CONFIG =================
 TEXT_FILE = "corpus-tier-1.txt"
-OUTPUT_DIR = "syn_data_output-tier-1"
+OUTPUT_DIR = "synthetic-data/syn_data_output-tier-1"
 
 FONT_PATHS = [
     "C:/Windows/Fonts/iskpota.ttf",                 # Iskoola Pota
