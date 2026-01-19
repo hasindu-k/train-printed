@@ -7,7 +7,7 @@ TEXT_FILE = "corpus-tier-1.txt"
 OUTPUT_DIR = "synthetic-data/syn_data_output-tier-1"
 
 FONT_PATHS = [
-    "C:/Windows/Fonts/iskpota.ttf",                 # Iskoola Pota
+    "C:/Windows/Fonts/iskpota.ttf",
     "C:/github/train-printed/fonts/noto_sans/NotoSansSinhala-Black.ttf",
     "C:/github/train-printed/fonts/noto_sans/NotoSansSinhala-Bold.ttf",
     "C:/github/train-printed/fonts/noto_sans/NotoSansSinhala-Medium.ttf",
@@ -27,45 +27,33 @@ FONT_PATHS = [
     "C:/github/train-printed/fonts/FM-Abhaya-x.ttf",
 ]
 
-IMAGE_HEIGHT = 48
-BASE_PADDING = 20
+FONT_SIZE_RANGE = (28, 36)
 
-# Noise / Augmentation probabilities
-DOT_NOISE_DENSITY = (0.002, 0.01)   # min, max
+DOT_NOISE_DENSITY = (0.002, 0.01)
 BLUR_PROB = 0.3
 CONTRAST_PROB = 0.3
 ROTATION_PROB = 0.25
-
-FONT_SIZE_RANGE = (28, 36)
-ROTATION_RANGE = (-1.5, 1.5)       # degrees
+ROTATION_RANGE = (-1.5, 1.5)
 # =========================================
 
 
 def add_dot_noise(image, density):
-    """Add random black pixel noise (dust)."""
     draw = ImageDraw.Draw(image)
-    width, height = image.size
-    total_pixels = width * height
-    dots = int(total_pixels * density)
-
-    for _ in range(dots):
-        x = random.randint(0, width - 1)
-        y = random.randint(0, height - 1)
-        draw.point((x, y), fill=(0, 0, 0))
-
+    w, h = image.size
+    for _ in range(int(w * h * density)):
+        draw.point(
+            (random.randint(0, w - 1), random.randint(0, h - 1)),
+            fill=(0, 0, 0),
+        )
     return image
 
 
 def apply_augmentations(image):
-    """Apply realistic scan-like augmentations."""
-    # Blur
     if random.random() < BLUR_PROB:
-        image = image.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.3, 0.7)))
+        image = image.filter(ImageFilter.GaussianBlur(random.uniform(0.3, 0.7)))
 
-    # Contrast
     if random.random() < CONTRAST_PROB:
-        enhancer = ImageEnhance.Contrast(image)
-        image = enhancer.enhance(random.uniform(0.8, 1.25))
+        image = ImageEnhance.Contrast(image).enhance(random.uniform(0.8, 1.25))
 
     return image
 
@@ -73,61 +61,64 @@ def apply_augmentations(image):
 def create_training_data():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    if not os.path.exists(TEXT_FILE):
-        raise FileNotFoundError(f"{TEXT_FILE} not found")
-
     with open(TEXT_FILE, "r", encoding="utf-8") as f:
         lines = [l.strip() for l in f if l.strip()]
 
     print(f"Loaded {len(lines)} lines")
 
     for i, text in enumerate(lines):
-        # ---- Random font selection ----
         font_path = random.choice(FONT_PATHS)
         font_size = random.randint(*FONT_SIZE_RANGE)
         font = ImageFont.truetype(font_path, font_size)
 
-        # ---- Measure text width ----
-        dummy_img = Image.new("RGB", (1, 1))
-        dummy_draw = ImageDraw.Draw(dummy_img)
-        bbox = dummy_draw.textbbox((0, 0), text, font=font)
-        text_width = bbox[2] - bbox[0]
+        print(f"Generating sample {i}: '{text}' with font '{os.path.basename(font_path)}' size {font_size}")
 
-        img_width = text_width + BASE_PADDING * 2
+        # ---- Correct Sinhala-safe bounding box ----
+        dummy = Image.new("RGB", (1, 1))
+        ddraw = ImageDraw.Draw(dummy)
+        left, top, right, bottom = ddraw.textbbox((0, 0), text, font=font)
 
-        # ---- Create image ----
-        image = Image.new("RGB", (img_width, IMAGE_HEIGHT), (255, 255, 255))
+        text_w = right - left
+        text_h = bottom - top
+
+        pad_x = random.randint(16, 24)
+        pad_y = random.randint(14, 22)
+
+        img_w = text_w + pad_x * 2
+        img_h = text_h + pad_y * 2
+
+        image = Image.new("RGB", (img_w, img_h), (255, 255, 255))
         draw = ImageDraw.Draw(image)
 
-        # ---- Baseline jitter ----
-        base_y = (IMAGE_HEIGHT - font_size) // 2
-        text_y = random.randint(base_y - 6, base_y + 4)
+        draw.text(
+            (pad_x - left, pad_y - top),
+            text,
+            font=font,
+            fill=(0, 0, 0),
+        )
 
-        draw.text((BASE_PADDING, text_y), text, font=font, fill=(0, 0, 0))
-
-        # ---- Rotation (before noise) ----
+        # ---- Rotation ----
         if random.random() < ROTATION_PROB:
-            angle = random.uniform(*ROTATION_RANGE)
-            image = image.rotate(angle, expand=True, fillcolor=(255, 255, 255))
+            image = image.rotate(
+                random.uniform(*ROTATION_RANGE),
+                expand=True,
+                fillcolor=(255, 255, 255),
+            )
 
-        # ---- Noise ----
-        density = random.uniform(*DOT_NOISE_DENSITY)
-        image = add_dot_noise(image, density)
-
-        # ---- Scan-like augmentations ----
+        # ---- Noise & augmentation ----
+        image = add_dot_noise(image, random.uniform(*DOT_NOISE_DENSITY))
         image = apply_augmentations(image)
 
-        # ---- Save ----
-        base_name = f"syn.history.{i}"
+        base = f"syn.history.{i}"
+        image.save(os.path.join(OUTPUT_DIR, base + ".png"))
 
-        image.save(os.path.join(OUTPUT_DIR, f"{base_name}.png"))
-        with open(os.path.join(OUTPUT_DIR, f"{base_name}.gt.txt"), "w", encoding="utf-8") as gt:
+        with open(os.path.join(OUTPUT_DIR, base + ".gt.txt"), "w", encoding="utf-8") as gt:
             gt.write(text)
 
-        if i % 1000 == 0 and i > 0:
-            print(f"Generated {i} samples...")
+        if i and i % 1000 == 0:
+            print(f"Generated {i} samples")
 
-    print(f"✅ Done. Generated {len(lines)} samples in '{OUTPUT_DIR}'")
+    print(f"✅ Done. Generated {len(lines)} samples")
 
 
 if __name__ == "__main__":
