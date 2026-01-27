@@ -131,6 +131,32 @@ async def get_current_user(
     return user
 
 
+async def get_optional_current_user(
+    db: Session = Depends(get_db),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
+) -> Optional[User]:
+    """Optional authentication dependency - returns None for unauthenticated requests."""
+    if credentials is None:
+        return None
+    
+    token = credentials.credentials
+    payload = verify_token(token, db)
+    
+    if payload is None:
+        return None
+    
+    token_type = payload.get("type")
+    if token_type != "access":
+        return None
+    
+    user_id = payload.get("sub")
+    if user_id is None:
+        return None
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    return user
+
+
 async def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
     """Dependency to ensure current user is an admin."""
     if current_user.role != "admin":
