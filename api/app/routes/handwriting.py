@@ -12,7 +12,7 @@ from app.database import get_db
 from app.models import Document, Page, LineImage, User
 from app.schemas import LineImageResponse, LineImageUpdate
 from app.security import get_optional_current_user
-from app.utils import extract_text_from_image, get_base_url, clean_sinhala_text
+from app.utils import extract_text_from_image, get_base_url, clean_sinhala_text, optimize_image
 
 router = APIRouter(prefix="/handwriting", tags=["handwriting"])
 
@@ -278,10 +278,9 @@ async def submit_handwriting(
         content = await file.read()
         
         def save_files():
-            # Save image file
-            with open(image_path, "wb") as f:
-                f.write(content)
-            
+            # Save optimized image
+            optimize_image(content, image_path, file_ext)
+
             # Create gt.txt file with the sentence
             gt_filename = filename.replace(f".{file_ext}", ".gt.txt")
             gt_path = os.path.join(lines_dir, gt_filename)

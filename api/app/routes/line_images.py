@@ -1,17 +1,28 @@
-from fastapi import APIRouter, Depends, File, HTTPException, status, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, status, Query, UploadFile, Request
 from fastapi.params import Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from uuid import UUID
 import os
 from datetime import datetime
+from pathlib import Path
+from urllib.parse import urlparse
 from pydantic import BaseModel
 
 from app.database import get_db
 from app.models import LineImage, Page, User
 from app.schemas import LineImageCreate, LineImageResponse, LineImageUpdate
 from app.security import get_current_user, get_current_reviewer
-from app.utils import clean_sinhala_text, convert_png_to_tiff, generate_line_variant_paths, update_gt_text_file, read_gt_text_file, extract_text_from_image
+from app.utils import (
+    clean_sinhala_text,
+    convert_png_to_tiff,
+    generate_line_variant_paths,
+    update_gt_text_file,
+    read_gt_text_file,
+    extract_text_from_image,
+    optimize_image,
+    get_base_url,
+)
 
 router = APIRouter(prefix="/api/lines", tags=["lines"])
 
@@ -320,25 +331,34 @@ def get_line_image_file(line_image_id: UUID, db: Session = Depends(get_db)):
 @router.post("/{line_id}/images")
 def add_line_image(
     line_id: UUID,
+    request: Request,
     image_path: str = Form(...),
     page_id: UUID = Form(...),
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    BASE_DIR = "C:/github/train-printed/api/"  # or wherever your lines folder is
+    BASE_DIR = Path(__file__).resolve().parents[2]  # repository api root
 
-    relative_path = image_path.replace("http://localhost:8000/", "")
-    full_path = os.path.join(BASE_DIR, relative_path)
+    parsed = urlparse(image_path)
+    relative_path = parsed.path.lstrip("/") if parsed.scheme or parsed.netloc else image_path.lstrip("/")
+    full_path = (BASE_DIR / relative_path).resolve()
+
+    try:
+        full_path.relative_to(BASE_DIR)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid image path")
+
     print(f"Uploading line image for line ID {line_id} to path: {full_path}")
-    paths = generate_line_variant_paths(full_path)
+    paths = generate_line_variant_paths(str(full_path))
     print(f"Generated paths: {paths}")
 
     # Ensure directory exists
     os.makedirs(os.path.dirname(paths["png_path"]), exist_ok=True)
 
-    # Save PNG
-    with open(paths["png_path"], "wb") as buffer:
-        buffer.write(file.file.read())
+    content = file.file.read()
+
+    # Save optimized PNG
+    optimize_image(content, paths["png_path"], "png")
 
     # Create empty GT file
     open(paths["gt_text_path"], "w").close()
@@ -346,11 +366,15 @@ def add_line_image(
     convert_png_to_tiff(paths["png_path"], paths["line_path"])
 
     # Save DB record
+    rel_line_path = os.path.relpath(paths["line_path"], BASE_DIR)
+    rel_png_path = os.path.relpath(paths["png_path"], BASE_DIR)
+    rel_gt_path = os.path.relpath(paths["gt_text_path"], BASE_DIR)
+
     db_line = LineImage(
         page_id=page_id,
-       image_path=os.path.relpath(paths["line_path"], BASE_DIR).replace("/", "\\"),
-        png_path=os.path.relpath(paths["png_path"], BASE_DIR).replace("/", "\\"),
-        gt_text_path=os.path.relpath(paths["gt_text_path"], BASE_DIR).replace("/", "\\"),
+        image_path=rel_line_path.replace(os.sep, "/"),
+        png_path=rel_png_path.replace(os.sep, "/"),
+        gt_text_path=rel_gt_path.replace(os.sep, "/"),
         verified=False,
         created_at=datetime.utcnow()
     )
@@ -362,7 +386,8 @@ def add_line_image(
     db.refresh(db_line)
 
     # send full url for image_url
-    full_image_url = f"http://localhost:8000/{db_line.png_path.replace('\\', '/')}"
+    base_url = get_base_url(request)
+    full_image_url = f"{base_url}/{db_line.png_path}"
 
     return {
         "status": "success",

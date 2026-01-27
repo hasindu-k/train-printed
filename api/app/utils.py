@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+from io import BytesIO
 import cv2
 import numpy as np
 from PIL import Image
@@ -180,6 +181,31 @@ def convert_to_tiff(input_path: str, output_path: str) -> None:
             img.save(output_path, format="TIFF")
     except Exception as e:
         raise Exception(f"Error converting {input_path} to TIFF: {str(e)}")
+
+
+def optimize_image(content: bytes, output_path: str, format_hint: str | None = None) -> None:
+    """Save image bytes with light optimization to reduce size."""
+    try:
+        img = Image.open(BytesIO(content))
+        ext = (format_hint or img.format or "PNG").upper()
+
+        if ext in {"JPG", "JPEG"}:
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+            save_kwargs = {"format": "JPEG", "quality": 85, "optimize": True}
+        elif ext == "PNG":
+            save_kwargs = {"format": "PNG", "optimize": True, "compress_level": 6}
+        elif ext == "WEBP":
+            if img.mode not in ("RGB", "RGBA"):
+                img = img.convert("RGB")
+            save_kwargs = {"format": "WEBP", "quality": 80, "method": 4}
+        else:
+            save_kwargs = {"format": ext}
+
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        img.save(output_path, **save_kwargs)
+    except Exception as e:
+        raise Exception(f"Error optimizing image: {str(e)}")
 
 
 def create_gt_text_files(lines_folder: str) -> int:

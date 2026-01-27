@@ -20,6 +20,7 @@ from app.utils import (
     export_dataset,
     extract_text_from_image,
     get_base_url,
+    optimize_image,
 )
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -86,9 +87,13 @@ async def upload_documents(
 
             # 🔹 Save file
             file_path = os.path.join(BASE_UPLOAD_DIR, generated_name)
-            with open(file_path, "wb") as f:
-                content = await file.read()
-                f.write(content)
+            content = await file.read()
+
+            if ALLOWED_EXTENSIONS[ext] == "image":
+                optimize_image(content, file_path, ext)
+            else:
+                with open(file_path, "wb") as f:
+                    f.write(content)
 
             # 🔹 Sanitize name
             doc_name = sanitize_filename(generated_name)
