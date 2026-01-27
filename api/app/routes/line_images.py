@@ -429,7 +429,7 @@ def extract_text(
     
     try:
         # Extract text using Tesseract
-        extracted_text = extract_text_from_image(line_image.image_path, lang=lang, config="--psm 7")
+        extracted_text = extract_text_from_image(line_image.image_path, lang="sin_eng_custom", config="--psm 7")
         
         # Update auto_text in database
         line_image.auto_text = extracted_text
