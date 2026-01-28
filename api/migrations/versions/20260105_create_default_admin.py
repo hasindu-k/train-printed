@@ -43,9 +43,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
     admin_email = os.getenv("DEFAULT_ADMIN_EMAIL", "admin@example.com")
 
-    op.execute(
+    bind.execute(
         sa.text("DELETE FROM users WHERE email = :email"),
         {"email": admin_email},
     )
+
