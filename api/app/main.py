@@ -17,7 +17,11 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+    "http://localhost:3000",
+    "https://v0-next-js-frontend-development-khaki-phi.vercel.app",
+    "https://ocr.sinhalalearn.online"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
