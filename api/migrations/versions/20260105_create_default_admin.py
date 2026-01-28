@@ -17,14 +17,16 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+
     admin_email = os.getenv("DEFAULT_ADMIN_EMAIL", "admin@example.com")
     admin_name = os.getenv("DEFAULT_ADMIN_NAME", "Admin")
     admin_password_hash = os.getenv(
         "DEFAULT_ADMIN_PASSWORD_HASH",
-        "$2b$12$YqLrUafu.kKn7PYbnYBIROD8Zrak8LCXDDBGy/cb46R4ZJQArFama"  # pre-hashed bcrypt
+        "$2b$12$YqLrUafu.kKn7PYbnYBIROD8Zrak8LCXDDBGy/cb46R4ZJQArFama"
     )
 
-    op.execute(
+    bind.execute(
         sa.text(
             """
             INSERT INTO users (id, name, email, hashed_password, role, is_active, created_at, updated_at)
