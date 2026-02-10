@@ -135,6 +135,158 @@ async def upload_documents(
         )
 
 
+@router.post(
+    "/upload/bulk",
+    response_model=DocumentResponse,
+    status_code=status.HTTP_201_CREATED
+)
+async def bulk_upload_images_as_document(
+    files: List[UploadFile] = File(...),
+    document_name: str = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    📌 Bulk Upload Multiple Images as Line Images
+    Uploads multiple images directly as line images for a single document
+    Treats each uploaded image as a line image (ready for labeling)
+    Authenticated users only
+    """
+    ensure_dirs()
+
+    if not files:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No files provided"
+        )
+
+    # Validate image files
+    for file in files:
+        ext = file.filename.split(".")[-1].lower()
+        if ext not in ALLOWED_EXTENSIONS or ALLOWED_EXTENSIONS[ext] != "image":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Only image files are allowed. Invalid file: {file.filename}"
+            )
+    saved_files = []
+
+    try:
+        from uuid import uuid4
+
+        # Generate document name if not provided
+        if not document_name:
+            document_name = f"bulk_upload_{uuid4().hex[:8]}"
+
+        doc_name = sanitize_filename(document_name)
+
+        # Create Document
+        db_document = Document(
+            original_filename=f"{document_name}.bulk",
+            stored_path=os.path.join(BASE_UPLOAD_DIR, f"bulk_{doc_name}"),
+            pages_folder=f"{PAGES_DIR}/{doc_name}",
+            status="extracted",
+            total_pages=1,
+            document_type="image",
+            uploaded_by=current_user.id
+        )
+
+        db.add(db_document)
+        db.commit()
+        db.refresh(db_document)
+
+        # Create a single placeholder Page
+        db_page = Page(
+            document_id=db_document.id,
+            page_number=1,
+            tif_path=f"{PAGES_DIR}/{doc_name}/page_0001.tif",
+            status="processed"
+        )
+        db.add(db_page)
+        db.commit()
+        db.refresh(db_page)
+
+        # Create lines folder
+        lines_folder = os.path.join(LINES_DIR, doc_name)
+        os.makedirs(lines_folder, exist_ok=True)
+
+        # Process each image as a line image
+        for idx, file in enumerate(files, start=1):
+            content = await file.read()
+            ext = file.filename.split(".")[-1].lower()
+
+            # Generate line image filenames
+            line_filename = f"line_{idx:04d}"
+            png_filename = f"{line_filename}.png"
+            tif_filename = f"{line_filename}.tif"
+            gt_filename = f"{line_filename}.gt.txt"
+
+            # Save as PNG
+            png_path = os.path.join(lines_folder, png_filename)
+            optimize_image(content, png_path, "png")
+            saved_files.append(png_path)
+
+            # Convert to TIFF
+            from app.utils import convert_to_tiff
+            tif_path = os.path.join(lines_folder, tif_filename)
+            convert_to_tiff(png_path, tif_path)
+            saved_files.append(tif_path)
+
+            # Create empty GT text file for labeling
+            gt_path = os.path.join(lines_folder, gt_filename)
+            with open(gt_path, "w", encoding="utf-8") as f:
+                f.write("")
+
+            # Create LineImage record
+            db_line = LineImage(
+                page_id=db_page.id,
+                image_path=tif_path,
+                png_path=png_path,
+                gt_text_path=gt_path,
+                auto_text=None,
+                corrected_text=None,
+                verified=False,
+                is_invalid=False,
+                reviewer_id=None
+            )
+            db.add(db_line)
+
+        # Commit all records
+        db.commit()
+
+        return DocumentResponse(
+            id=db_document.id,
+            original_filename=db_document.original_filename,
+            stored_path=db_document.stored_path,
+            status=db_document.status,
+            total_pages=db_document.total_pages,
+            lines_extracted=len(files),
+            lines_verified=0,
+            document_type=db_document.document_type,
+            uploaded_by=db_document.uploaded_by,
+            created_at=db_document.created_at,
+            updated_at=db_document.updated_at,
+        )
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        db.rollback()
+
+        # Cleanup saved files on failure
+        for path in saved_files:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except Exception:
+                pass
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Bulk upload failed: {str(e)}"
+        )
+
+
 @router.get("/", response_model=list[DocumentResponse])
 def list_documents(request: Request, db: Session = Depends(get_db)):
     """List all documents with line extraction/verification counts."""
