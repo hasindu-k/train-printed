@@ -3,7 +3,7 @@ import os
 import cv2
 
 # ===== INPUTS =====
-JSON_PATH = "export.json"   # save your big JSON into this file
+JSON_PATH = "export-2.json"   # save your big JSON into this file
 BASE_IMAGE_DIR = "."  # where LS images are stored
 OUTPUT_DIR = "cropped_dataset"
 
