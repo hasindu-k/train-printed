@@ -1,5 +1,5 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Request
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Request, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case
 from uuid import UUID
@@ -31,6 +31,10 @@ PAGES_DIR = "pages"
 LINES_DIR = "lines"
 
 
+def resolve_document_name(document: Document) -> str:
+    return document.name if document.name else document.original_filename
+
+
 def ensure_dirs():
     """Ensure necessary directories exist."""
     os.makedirs(BASE_UPLOAD_DIR, exist_ok=True)
@@ -53,6 +57,7 @@ ALLOWED_EXTENSIONS = {
 )
 async def upload_documents(
     files: List[UploadFile] = File(...),
+    document_names: List[str] = Form(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -63,13 +68,25 @@ async def upload_documents(
     ensure_dirs()
     uploaded_documents = []
 
+    if document_names and len(document_names) != len(files):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="If provided, document_names must match the number of files"
+        )
+
     from app.utils import get_no_of_pages_in_pdf
 
     try:
-        for file in files:
+        for index, file in enumerate(files):
             # 🔹 Get file extension
             filename = file.filename
             ext = filename.split(".")[-1].lower()
+            default_name = os.path.splitext(filename)[0]
+            custom_name = (
+                document_names[index].strip()
+                if document_names and document_names[index] and document_names[index].strip()
+                else default_name
+            )
 
             if ext not in ALLOWED_EXTENSIONS:
                 raise HTTPException(
@@ -108,6 +125,7 @@ async def upload_documents(
 
             # 🔹 Create DB record
             db_document = Document(
+                name=custom_name,
                 original_filename=filename,
                 stored_path=file_path,
                 pages_folder=f"{PAGES_DIR}/{doc_name}",
@@ -181,6 +199,7 @@ async def bulk_upload_images_as_document(
 
         # Create Document
         db_document = Document(
+            name=document_name,
             original_filename=f"{document_name}.bulk",
             stored_path=os.path.join(BASE_UPLOAD_DIR, f"bulk_{doc_name}"),
             pages_folder=f"{PAGES_DIR}/{doc_name}",
@@ -255,6 +274,7 @@ async def bulk_upload_images_as_document(
 
         return DocumentResponse(
             id=db_document.id,
+            name=resolve_document_name(db_document),
             original_filename=db_document.original_filename,
             stored_path=db_document.stored_path,
             status=db_document.status,
@@ -323,6 +343,7 @@ def list_documents(request: Request, db: Session = Depends(get_db)):
     return [
         DocumentResponse(
             id=doc.id,
+            name=resolve_document_name(doc),
             original_filename=doc.original_filename,
             stored_path=f"{base_url}/{doc.stored_path.replace(os.sep, '/')}",
             status=doc.status,
@@ -490,12 +511,15 @@ def get_document(document_id: UUID, request: Request, db: Session = Depends(get_
 
     return DocumentResponse(
         id=document.id,
+        name=resolve_document_name(document),
         original_filename=document.original_filename,
         stored_path=f"{base_url}/{document.stored_path.replace(os.sep, '/')}",
         status=document.status,
         total_pages=document.total_pages,
         lines_extracted=counts.lines_extracted if counts else 0,
         lines_verified=counts.lines_verified if counts else 0,
+        document_type=document.document_type,
+        uploaded_by=document.uploaded_by,
         created_at=document.created_at,
         updated_at=document.updated_at,
     )
@@ -519,6 +543,14 @@ def update_document(
         document.status = document_data.status
     if document_data.total_pages is not None:
         document.total_pages = document_data.total_pages
+    if document_data.name is not None:
+        cleaned_name = document_data.name.strip()
+        if not cleaned_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Document name cannot be empty"
+            )
+        document.name = cleaned_name
     
     document.updated_at = datetime.utcnow()
     db.commit()

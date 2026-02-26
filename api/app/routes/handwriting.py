@@ -123,6 +123,7 @@ def get_or_create_handwriting_document(db: Session, user_id: UUID, tier: str = "
     doc_name = f"handwriting-{tier}-{user_id}"
     
     new_doc = Document(
+        name=doc_title,
         original_filename=doc_title,
         stored_path=f"{HANDWRITING_DIR}/",
         pages_folder=f"{PAGES_DIR}/{doc_name}/",

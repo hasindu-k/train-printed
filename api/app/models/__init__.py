@@ -28,6 +28,7 @@ class Document(Base):
     __tablename__ = "documents"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
     original_filename = Column(String(255), nullable=False)
     stored_path = Column(String(255), nullable=False)
     pages_folder = Column(String(255), nullable=True)  # pages/<doc_name>/

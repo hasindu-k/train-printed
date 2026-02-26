@@ -32,17 +32,20 @@ class UserUpdate(BaseModel):
 
 
 class DocumentCreate(BaseModel):
+    name: str
     original_filename: str
     stored_path: str
 
 
 class DocumentUpdate(BaseModel):
+    name: Optional[str] = None
     status: Optional[str] = None
     total_pages: Optional[int] = None
 
 
 class DocumentResponse(BaseModel):
     id: UUID
+    name: str
     original_filename: str
     stored_path: str
     status: str
