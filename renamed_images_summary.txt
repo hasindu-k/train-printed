@@ -1,0 +1,48 @@
+renamed_images folder summary
+Generated: 2026-02-25
+Folder: C:\github\train-printed\renamed_images
+
+Naming format used:
+- writer-docID-page-words
+
+Total files: 507
+Valid format filenames: 507
+Invalid format filenames: 0
+Total size: 5.26 MB
+
+Overall counts (from naming format):
+- Writers: 2
+- Documents (writer+docID): 2
+- Pages (writer+docID+page): 10
+- Words (writer+docID+page+words): 507
+
+Writer-wise summary:
+- aa: files=249, documents=1, pages=5, words=249
+- ab: files=258, documents=1, pages=5, words=258
+
+Words per page:
+- aa-0001-001: 52
+- aa-0001-002: 64
+- aa-0001-003: 59
+- aa-0001-004: 25
+- aa-0001-005: 49
+- ab-0001-001: 58
+- ab-0001-002: 34
+- ab-0001-003: 1
+- ab-0001-004: 94
+- ab-0001-005: 71
+
+File types:
+- png: 507
+
+Sample filenames (first 10):
+- aa-0001-001-0001.png
+- aa-0001-001-0002.png
+- aa-0001-001-0003.png
+- aa-0001-001-0004.png
+- aa-0001-001-0005.png
+- aa-0001-001-0006.png
+- aa-0001-001-0007.png
+- aa-0001-001-0008.png
+- aa-0001-001-0009.png
+- aa-0001-001-0010.png

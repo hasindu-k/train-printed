@@ -65,3 +65,7 @@ renamed_images/
 cropped_dataset/
 
 words-set-1/
+
+dataset/
+
+padded_dataset/
