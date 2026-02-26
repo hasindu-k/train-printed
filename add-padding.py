@@ -3,8 +3,8 @@ import numpy as np
 import os
 import shutil
 
-input_folder = "dataset"
-output_folder = "padded_dataset"
+input_folder = r"C:\Users\Hasindu\Desktop\create-dataset\renamed-annotated-handwritten"
+output_folder = r"C:\Users\Hasindu\Desktop\create-dataset\padded-renamed-annotated-handwritten"
 padding = 50  # space around text line in pixels
 
 os.makedirs(output_folder, exist_ok=True)
