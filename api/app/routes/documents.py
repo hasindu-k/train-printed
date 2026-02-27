@@ -160,7 +160,7 @@ async def upload_documents(
 )
 async def bulk_upload_images_as_document(
     files: List[UploadFile] = File(...),
-    document_name: str = None,
+    document_name: str = Form(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -193,6 +193,7 @@ async def bulk_upload_images_as_document(
 
         # Generate document name if not provided
         if not document_name:
+            print("No document name provided, generating a unique name.")
             document_name = f"bulk_upload_{uuid4().hex[:8]}"
 
         doc_name = sanitize_filename(document_name)
