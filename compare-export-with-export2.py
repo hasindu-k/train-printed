@@ -1,7 +1,10 @@
 import json
-import os
 import shutil
 from pathlib import Path
+
+# Config
+EXPORT_JSON_FILE = "export.json"
+EXPORT2_JSON_FILE = "export-2.json"
 
 def get_image_names_from_json(file_path):
     """Extract file upload names from Label Studio export JSON"""
@@ -37,20 +40,20 @@ def get_file_mapping_from_json(file_path):
 
 def rename_new_images_only():
     """Rename only new WhatsApp files (not in export.json) to match export-2.json format"""
-    print("Reading export.json...")
-    existing_images = get_image_names_from_json('export.json')
-    print(f"Found {len(existing_images)} images in export.json")
+    print(f"Reading {EXPORT_JSON_FILE}...")
+    existing_images = get_image_names_from_json(EXPORT_JSON_FILE)
+    print(f"Found {len(existing_images)} images in {EXPORT_JSON_FILE}")
     
-    print("\nReading export-2.json...")
-    all_images = get_image_names_from_json('export-2.json')
-    print(f"Found {len(all_images)} images in export-2.json")
+    print(f"\nReading {EXPORT2_JSON_FILE}...")
+    all_images = get_image_names_from_json(EXPORT2_JSON_FILE)
+    print(f"Found {len(all_images)} images in {EXPORT2_JSON_FILE}")
     
     # Find new images (in export-2.json but not in export.json)
     new_images = all_images - existing_images
     print(f"Found {len(new_images)} new images")
     
-    print("\nGetting file mapping from export-2.json...")
-    file_mapping = get_file_mapping_from_json('export-2.json')
+    print(f"\nGetting file mapping from {EXPORT2_JSON_FILE}...")
+    file_mapping = get_file_mapping_from_json(EXPORT2_JSON_FILE)
     
     # Filter mapping to only include new images
     new_file_mapping = {}
